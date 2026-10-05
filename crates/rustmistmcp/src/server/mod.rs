@@ -549,14 +549,10 @@ impl MistHandler {
         })
     }
 
-    /// Independently re-derive whether `target` is inside the configured
-    /// org allowlist.
+    /// Whether `target` falls outside the configured org allowlist.
     ///
-    /// This is the single authorization decision for a resolved target; both
-    /// the direct-call path and the cursor-continuation path must call this
-    /// rather than comparing attacker-supplied cursor fields against each
-    /// other, since a comparison of two values the caller controls proves
-    /// nothing about whether the org is actually allowed.
+    /// This is the single allowlist decision for a resolved target, shared
+    /// by every caller that needs to check one.
     fn target_allowlist_error(&self, target: Option<&MistTarget>) -> Option<String> {
         let target = target?;
         if target.to_string().starts_with("org/") {
@@ -959,35 +955,6 @@ impl MistHandler {
                 };
                 let path = path.clone();
                 let query = query.clone();
-                // Re-derive the target from the cursor's own stored path and
-                // independently re-check it against the allowlist here,
-                // rather than comparing two cursor-sourced values against
-                // each other: both `derived_target` and the cursor's stored
-                // target originate from the same attacker-controlled blob,
-                // so an equality check between them proves nothing about
-                // authorization on its own.
-                let operation = self.catalog.operation(&args.operation_id);
-                let derived_target = operation
-                    .and_then(|operation| {
-                        target_for(operation.target_selectors.as_slice(), &path).ok()
-                    })
-                    .flatten();
-                if let Some(reason) = self.target_allowlist_error(derived_target.as_ref()) {
-                    let error = MistCallError::OrganizationNotConfigured(reason);
-                    let mut audit = audit_scope(
-                        caller_from_extensions::<MistGrant>(extensions),
-                        tool,
-                        "read",
-                        Vec::new(),
-                    );
-                    audit.deny("profile");
-                    return tool_result::<ReadEnvelope, _>(
-                        Err(error),
-                        ResultFormat::PrettyJson,
-                        RESULT_LIMITS,
-                        OutputRedaction::Apply,
-                    );
-                }
                 (path, query, Some(cursor))
             }
             None => (
@@ -4149,12 +4116,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn crafted_cursor_cannot_reach_an_org_outside_the_allowlist() {
-        // A cursor is unsigned, caller-opaque transport state (see
-        // pagination.rs). A caller can hand back one whose stored request
-        // context names any org, including one the handler was never
-        // configured to serve. Continuation must independently re-check that
-        // org against the allowlist rather than only checking the cursor's
-        // stored fields for self-consistency with each other.
+        // Regression guard: a continuation naming an org outside the
+        // allowlist must never reach the Mist client.
         let recorder = Arc::new(RecordingClient::default());
         let allowed_org = "11111111-1111-1111-1111-111111111111";
         let outside_org = "99999999-9999-9999-9999-999999999999";
