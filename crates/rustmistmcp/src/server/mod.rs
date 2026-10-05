@@ -935,7 +935,7 @@ impl MistHandler {
                         OutputRedaction::Apply,
                     );
                 };
-                let Some((path, query, _stored_target)) = cursor.request_context() else {
+                let Some((path, query, stored_target)) = cursor.request_context() else {
                     let error = MistCallError::Mist(MistError::InvalidCursor(
                         "opaque cursor has no request context".to_owned(),
                     ));
@@ -955,6 +955,30 @@ impl MistHandler {
                 };
                 let path = path.clone();
                 let query = query.clone();
+                let operation = self.catalog.operation(&args.operation_id);
+                let derived_target = operation
+                    .and_then(|operation| {
+                        target_for(operation.target_selectors.as_slice(), &path).ok()
+                    })
+                    .flatten();
+                if derived_target.as_ref() != stored_target {
+                    let error = MistCallError::Mist(MistError::InvalidCursor(
+                        "cursor target does not match its request context".to_owned(),
+                    ));
+                    let mut audit = audit_scope(
+                        caller_from_extensions::<MistGrant>(extensions),
+                        tool,
+                        "read",
+                        Vec::new(),
+                    );
+                    audit.fail(&error);
+                    return tool_result::<ReadEnvelope, _>(
+                        Err(error),
+                        ResultFormat::PrettyJson,
+                        RESULT_LIMITS,
+                        OutputRedaction::Apply,
+                    );
+                }
                 (path, query, Some(cursor))
             }
             None => (
@@ -4115,9 +4139,9 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn crafted_cursor_cannot_reach_an_org_outside_the_allowlist() {
-        // Regression guard: a continuation naming an org outside the
-        // allowlist must never reach the Mist client.
+    async fn continuation_read_reapplies_the_target_allowlist_check() {
+        // A paginated continuation runs the same allowlist decision a
+        // direct request does, not a weaker one.
         let recorder = Arc::new(RecordingClient::default());
         let allowed_org = "11111111-1111-1111-1111-111111111111";
         let outside_org = "99999999-9999-9999-9999-999999999999";
@@ -4168,7 +4192,66 @@ mod tests {
         );
         assert!(
             recorder.0.lock().expect("recorder").is_empty(),
-            "the outside-allowlist continuation must never reach the Mist client"
+            "a denied continuation must never reach the Mist client"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn continuation_target_must_match_its_derived_target() {
+        // The cursor's request context carries its own copy of the target
+        // alongside the path; a continuation whose two copies disagree is
+        // rejected rather than trusted.
+        let recorder = Arc::new(RecordingClient::default());
+        let allowed_org = "11111111-1111-1111-1111-111111111111";
+        let other_org = "22222222-2222-2222-2222-222222222222";
+        let handler = MistHandler::with_client(
+            "https://api.mist.com/",
+            vec![allowed_org.to_owned(), other_org.to_owned()],
+            BTreeMap::new(),
+            recorder.clone(),
+        )
+        .expect("handler");
+        let path = BTreeMap::from([("org_id".to_owned(), allowed_org.to_owned())]);
+        let mismatched_cursor = rustmistmcp_core::MistCursor::new(
+            "listOrgSites".to_owned(),
+            &Url::parse("https://api.mist.com/").expect("origin"),
+            rustmistmcp_core::PaginationMode::PageLimit,
+            "2".to_owned(),
+        )
+        .expect("cursor")
+        .with_request_context(
+            path,
+            BTreeMap::from([("limit".to_owned(), serde_json::json!(25))]),
+            Some(MistTarget::org(other_org).expect("target")),
+        )
+        .expect("context");
+        let encoded = hex::encode(serde_json::to_vec(&mismatched_cursor).expect("serialize"));
+        let result = handler
+            .invoke_dispatcher(
+                "invoke_mist_read",
+                InvokeReadArgs {
+                    operation_id: "listOrgSites".to_owned(),
+                    path: None,
+                    query: None,
+                    cursor: Some(encoded),
+                },
+                MistCapability::OrdinaryRead,
+                &rmcp::model::Extensions::new(),
+            )
+            .await;
+        assert_eq!(result.is_error, Some(true), "{result:?}");
+        let text = result.content[0]
+            .as_text()
+            .expect("text content")
+            .text
+            .clone();
+        assert!(
+            text.contains("cursor target does not match its request context"),
+            "expected a cursor consistency denial, got: {text}"
+        );
+        assert!(
+            recorder.0.lock().expect("recorder").is_empty(),
+            "a denied continuation must never reach the Mist client"
         );
     }
 
