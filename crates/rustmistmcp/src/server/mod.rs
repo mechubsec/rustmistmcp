@@ -935,7 +935,7 @@ impl MistHandler {
                         OutputRedaction::Apply,
                     );
                 };
-                let Some((path, query, stored_target)) = cursor.request_context() else {
+                let Some((path, query, _stored_target)) = cursor.request_context() else {
                     let error = MistCallError::Mist(MistError::InvalidCursor(
                         "opaque cursor has no request context".to_owned(),
                     ));
@@ -961,17 +961,20 @@ impl MistHandler {
                         target_for(operation.target_selectors.as_slice(), &path).ok()
                     })
                     .flatten();
-                if derived_target.as_ref() != stored_target {
-                    let error = MistCallError::Mist(MistError::InvalidCursor(
-                        "cursor target does not match its request context".to_owned(),
-                    ));
+                // The cursor's own copy of the target is attacker-controlled
+                // transport state; comparing it to a target derived from the
+                // cursor's own path proves nothing. Re-run the same allowlist
+                // decision every direct call gets, against the target derived
+                // from the path that will actually be queried.
+                if let Some(reason) = self.target_allowlist_error(derived_target.as_ref()) {
+                    let error = MistCallError::OrganizationNotConfigured(reason);
                     let mut audit = audit_scope(
                         caller_from_extensions::<MistGrant>(extensions),
                         tool,
                         "read",
                         Vec::new(),
                     );
-                    audit.fail(&error);
+                    audit.deny("profile");
                     return tool_result::<ReadEnvelope, _>(
                         Err(error),
                         ResultFormat::PrettyJson,
@@ -4197,8 +4200,13 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn continuation_target_must_match_its_derived_target() {
-        // A continuation with an inconsistent request context is rejected.
+    async fn continuation_is_authorized_against_its_derived_target_not_its_stored_copy() {
+        // The cursor's self-reported target is attacker-controlled transport
+        // state and carries no authority on its own: a continuation whose
+        // stored target disagrees with the target derived from its own path
+        // still reaches the client, because authorization runs against the
+        // path-derived target (which passes the allowlist here), not the
+        // cursor's own copy.
         let recorder = Arc::new(RecordingClient::default());
         let allowed_org = "11111111-1111-1111-1111-111111111111";
         let other_org = "22222222-2222-2222-2222-222222222222";
@@ -4224,7 +4232,10 @@ mod tests {
         )
         .expect("context");
         let encoded = hex::encode(serde_json::to_vec(&mismatched_cursor).expect("serialize"));
-        let result = handler
+        // The dispatcher's own schema validation of the canned response body
+        // is irrelevant here; what matters is whether the authorization
+        // checks let the request past the cursor branch to the Mist client.
+        let _result = handler
             .invoke_dispatcher(
                 "invoke_mist_read",
                 InvokeReadArgs {
@@ -4237,19 +4248,10 @@ mod tests {
                 &rmcp::model::Extensions::new(),
             )
             .await;
-        assert_eq!(result.is_error, Some(true), "{result:?}");
-        let text = result.content[0]
-            .as_text()
-            .expect("text content")
-            .text
-            .clone();
-        assert!(
-            text.contains("cursor target does not match its request context"),
-            "expected a cursor consistency denial, got: {text}"
-        );
-        assert!(
-            recorder.0.lock().expect("recorder").is_empty(),
-            "a denied continuation must never reach the Mist client"
+        assert_eq!(
+            recorder.0.lock().expect("recorder").len(),
+            1,
+            "the request authorized against its path-derived target must reach the Mist client"
         );
     }
 
