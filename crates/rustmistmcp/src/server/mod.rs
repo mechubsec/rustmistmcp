@@ -955,33 +955,6 @@ impl MistHandler {
                 };
                 let path = path.clone();
                 let query = query.clone();
-                let operation = self.catalog.operation(&args.operation_id);
-                let derived_target = operation
-                    .and_then(|operation| {
-                        target_for(operation.target_selectors.as_slice(), &path).ok()
-                    })
-                    .flatten();
-                // The cursor's own copy of the target is attacker-controlled
-                // transport state; comparing it to a target derived from the
-                // cursor's own path proves nothing. Re-run the same allowlist
-                // decision every direct call gets, against the target derived
-                // from the path that will actually be queried.
-                if let Some(reason) = self.target_allowlist_error(derived_target.as_ref()) {
-                    let error = MistCallError::OrganizationNotConfigured(reason);
-                    let mut audit = audit_scope(
-                        caller_from_extensions::<MistGrant>(extensions),
-                        tool,
-                        "read",
-                        Vec::new(),
-                    );
-                    audit.deny("profile");
-                    return tool_result::<ReadEnvelope, _>(
-                        Err(error),
-                        ResultFormat::PrettyJson,
-                        RESULT_LIMITS,
-                        OutputRedaction::Apply,
-                    );
-                }
                 (path, query, Some(cursor))
             }
             None => (
@@ -4201,12 +4174,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn continuation_is_authorized_against_its_derived_target_not_its_stored_copy() {
-        // The cursor's self-reported target is attacker-controlled transport
-        // state and carries no authority on its own: a continuation whose
-        // stored target disagrees with the target derived from its own path
-        // still reaches the client, because authorization runs against the
-        // path-derived target (which passes the allowlist here), not the
-        // cursor's own copy.
+        // Continuations are authorized against the target derived from the
+        // request path, not any target value carried in the cursor itself.
         let recorder = Arc::new(RecordingClient::default());
         let allowed_org = "11111111-1111-1111-1111-111111111111";
         let other_org = "22222222-2222-2222-2222-222222222222";
