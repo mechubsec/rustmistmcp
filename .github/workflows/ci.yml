@@ -65,6 +65,41 @@ jobs:
           archive=$(find dist -name '*.tar.gz' -print -quit)
           scripts/smoke-release-archive.sh "$archive" "$archive.sha256"
 
+  # mecmcp#355: the shared packaging contract (installer executable, declared
+  # binary present, honest BUILD-INFO, override-surviving flags) is checked
+  # centrally so a per-repo drift (a forged BUILD-INFO, a dropped audit flag)
+  # fails here instead of being discovered on a production guest. The other
+  # five vendor servers in the family already run this job; this closes the
+  # last gap.
+  conformance:
+    name: Package conformance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build package
+        # Real build, not skip-build: the honest BUILD-INFO this stages is
+        # what R3 checks, and only build-release.sh produces one.
+        run: |
+          archive=$(scripts/build-release.sh)
+          echo "archive=$archive" >> "$GITHUB_ENV"
+      - name: Stage the package
+        run: |
+          set -euo pipefail
+          mkdir -p staging
+          tar -xzf "$archive" -C staging --strip-components=1
+          cp packaging/conformance.toml staging/
+      - name: Build image
+        run: docker build --build-arg VERSION=ci --build-arg REVISION="$GITHUB_SHA" --tag rustmistmcp:ci .
+      - name: Conformance
+        uses: mechubsec/mecmcp/packaging/conformance@373dc51cac90b97e728e20363b4b05d7b2c179a5
+        with:
+          staging: staging
+          manifest: staging/conformance.toml
+          image: rustmistmcp:ci
+
   # The OCI smoke is the only gate that actually *runs the built binary*, so it
   # is the only thing that can catch a startup-ordering fault. It found one: the
   # rustls crypto provider was installed after the HTTP client was constructed,

@@ -1,0 +1,26 @@
+binary     = "bin/rustmistmcp"
+installer  = "packaging/lxc/install.sh"
+service    = "rustmistmcp"
+config_dir = "/etc/rustmistmcp"
+tokens     = "/var/lib/rustmistmcp/tokens.json"
+
+# rustmistmcp has a supported skip-build path (RUSTMISTMCP_SKIP_BUILD) and
+# scripts/build-release.sh emits an honest BUILD-INFO either way -- a real
+# rustc -V when it compiled the binary, "unknown (...)" when it did not. R3
+# is therefore fatal rather than a warning. See mecmcp#355.
+build_info     = true
+skip_build_env = "RUSTMISTMCP_SKIP_BUILD"
+
+units = ["packaging/systemd/rustmistmcp.service"]
+
+# Confirmed in the oci-smoke job to survive an operator --host override:
+# Docker replaces CMD wholesale but appends to ENTRYPOINT, and all three live
+# in ENTRYPOINT.
+must_survive_override = ["--device-mapping", "--tokens-file", "--audit-hmac-key-file"]
+
+# The binary generates its own key when the file is absent and the image has
+# no shell to run a key-generating entrypoint script, so this declares the
+# audit_hmac_flag pattern instead of audit_entrypoint. Promotes conformance
+# R7 from warn to fatal: the flag above is already in must_survive_override,
+# so R6 proves it reaches the running container's argv.
+audit_hmac_flag = "--audit-hmac-key-file"
