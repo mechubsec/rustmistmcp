@@ -549,6 +549,46 @@ impl MistHandler {
         })
     }
 
+    /// Whether `target` falls outside the configured org allowlist.
+    ///
+    /// This is the single allowlist decision for a resolved target, shared
+    /// by every caller that needs to check one.
+    fn target_allowlist_error(&self, target: Option<&MistTarget>) -> Option<String> {
+        let target = target?;
+        if target.to_string().starts_with("org/") {
+            if !self.allowed_orgs.iter().any(|org| org == target.id()) {
+                Some(format!(
+                    "organization {} is not in the configured allowlist",
+                    target.id()
+                ))
+            } else {
+                None
+            }
+        } else if target.to_string().starts_with("site/") {
+            match self
+                .sites
+                .read()
+                .expect("mist site map lock poisoned")
+                .get(target.id())
+            {
+                None => Some(format!(
+                    "site {} is not known (requires org_id for site queries, or the site's parent org in the allowlist)",
+                    target.id()
+                )),
+                Some(org_id) if !self.allowed_orgs.iter().any(|org| org == org_id) => {
+                    Some(format!(
+                        "site {}'s parent organization {} is not in the configured allowlist",
+                        target.id(),
+                        org_id
+                    ))
+                }
+                Some(_) => None,
+            }
+        } else {
+            Some("the target is neither an organization nor a site".to_owned())
+        }
+    }
+
     async fn dispatch_catalogued_read(
         &self,
         read: CatalogRead,
@@ -683,50 +723,15 @@ impl MistHandler {
                 OutputRedaction::Apply,
             );
         }
-        if let Some(target) = &target {
-            let error_opt = if target.to_string().starts_with("org/") {
-                if !self.allowed_orgs.iter().any(|org| org == target.id()) {
-                    Some(format!(
-                        "organization {} is not in the configured allowlist",
-                        target.id()
-                    ))
-                } else {
-                    None
-                }
-            } else if target.to_string().starts_with("site/") {
-                match self
-                    .sites
-                    .read()
-                    .expect("mist site map lock poisoned")
-                    .get(target.id())
-                {
-                    None => Some(format!(
-                        "site {} is not known (requires org_id for site queries, or the site's parent org in the allowlist)",
-                        target.id()
-                    )),
-                    Some(org_id) if !self.allowed_orgs.iter().any(|org| org == org_id) => {
-                        Some(format!(
-                            "site {}'s parent organization {} is not in the configured allowlist",
-                            target.id(),
-                            org_id
-                        ))
-                    }
-                    Some(_) => None,
-                }
-            } else {
-                Some("the target is neither an organization nor a site".to_owned())
-            };
-
-            if let Some(reason) = error_opt {
-                let error = MistCallError::OrganizationNotConfigured(reason);
-                audit.deny("profile");
-                return tool_result::<ReadEnvelope, _>(
-                    Err(error),
-                    ResultFormat::PrettyJson,
-                    RESULT_LIMITS,
-                    OutputRedaction::Apply,
-                );
-            }
+        if let Some(reason) = self.target_allowlist_error(target.as_ref()) {
+            let error = MistCallError::OrganizationNotConfigured(reason);
+            audit.deny("profile");
+            return tool_result::<ReadEnvelope, _>(
+                Err(error),
+                ResultFormat::PrettyJson,
+                RESULT_LIMITS,
+                OutputRedaction::Apply,
+            );
         }
         if let Err(error) = validate_page_limit(&query) {
             audit.fail(&error);
@@ -930,7 +935,7 @@ impl MistHandler {
                         OutputRedaction::Apply,
                     );
                 };
-                let Some((path, query, stored_target)) = cursor.request_context() else {
+                let Some((path, query, _stored_target)) = cursor.request_context() else {
                     let error = MistCallError::Mist(MistError::InvalidCursor(
                         "opaque cursor has no request context".to_owned(),
                     ));
@@ -950,30 +955,6 @@ impl MistHandler {
                 };
                 let path = path.clone();
                 let query = query.clone();
-                let operation = self.catalog.operation(&args.operation_id);
-                let derived_target = operation
-                    .and_then(|operation| {
-                        target_for(operation.target_selectors.as_slice(), &path).ok()
-                    })
-                    .flatten();
-                if derived_target.as_ref() != stored_target {
-                    let error = MistCallError::Mist(MistError::InvalidCursor(
-                        "cursor target does not match its request context".to_owned(),
-                    ));
-                    let mut audit = audit_scope(
-                        caller_from_extensions::<MistGrant>(extensions),
-                        tool,
-                        "read",
-                        Vec::new(),
-                    );
-                    audit.fail(&error);
-                    return tool_result::<ReadEnvelope, _>(
-                        Err(error),
-                        ResultFormat::PrettyJson,
-                        RESULT_LIMITS,
-                        OutputRedaction::Apply,
-                    );
-                }
                 (path, query, Some(cursor))
             }
             None => (
@@ -4131,6 +4112,116 @@ mod tests {
             .await;
         assert_eq!(result.is_error, Some(true));
         assert!(recorder.0.lock().expect("recorder").is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn continuation_read_reapplies_the_target_allowlist_check() {
+        // A paginated continuation runs the same allowlist decision a
+        // direct request does, not a weaker one.
+        let recorder = Arc::new(RecordingClient::default());
+        let allowed_org = "11111111-1111-1111-1111-111111111111";
+        let outside_org = "99999999-9999-9999-9999-999999999999";
+        let handler = MistHandler::with_client(
+            "https://api.mist.com/",
+            vec![allowed_org.to_owned()],
+            BTreeMap::new(),
+            recorder.clone(),
+        )
+        .expect("handler");
+        let path = BTreeMap::from([("org_id".to_owned(), outside_org.to_owned())]);
+        let crafted_cursor = rustmistmcp_core::MistCursor::new(
+            "listOrgSites".to_owned(),
+            &Url::parse("https://api.mist.com/").expect("origin"),
+            rustmistmcp_core::PaginationMode::PageLimit,
+            "2".to_owned(),
+        )
+        .expect("cursor")
+        .with_request_context(
+            path,
+            BTreeMap::from([("limit".to_owned(), serde_json::json!(25))]),
+            Some(MistTarget::org(outside_org).expect("target")),
+        )
+        .expect("context");
+        let encoded = hex::encode(serde_json::to_vec(&crafted_cursor).expect("serialize"));
+        let result = handler
+            .invoke_dispatcher(
+                "invoke_mist_read",
+                InvokeReadArgs {
+                    operation_id: "listOrgSites".to_owned(),
+                    path: None,
+                    query: None,
+                    cursor: Some(encoded),
+                },
+                MistCapability::OrdinaryRead,
+                &rmcp::model::Extensions::new(),
+            )
+            .await;
+        assert_eq!(result.is_error, Some(true), "{result:?}");
+        let text = result.content[0]
+            .as_text()
+            .expect("text content")
+            .text
+            .clone();
+        assert!(
+            text.contains("not in the configured allowlist"),
+            "expected an allowlist denial, got: {text}"
+        );
+        assert!(
+            recorder.0.lock().expect("recorder").is_empty(),
+            "a denied continuation must never reach the Mist client"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn continuation_is_authorized_against_its_derived_target_not_its_stored_copy() {
+        // Continuations are authorized against the target derived from the
+        // request path, not any target value carried in the cursor itself.
+        let recorder = Arc::new(RecordingClient::default());
+        let allowed_org = "11111111-1111-1111-1111-111111111111";
+        let other_org = "22222222-2222-2222-2222-222222222222";
+        let handler = MistHandler::with_client(
+            "https://api.mist.com/",
+            vec![allowed_org.to_owned(), other_org.to_owned()],
+            BTreeMap::new(),
+            recorder.clone(),
+        )
+        .expect("handler");
+        let path = BTreeMap::from([("org_id".to_owned(), allowed_org.to_owned())]);
+        let mismatched_cursor = rustmistmcp_core::MistCursor::new(
+            "listOrgSites".to_owned(),
+            &Url::parse("https://api.mist.com/").expect("origin"),
+            rustmistmcp_core::PaginationMode::PageLimit,
+            "2".to_owned(),
+        )
+        .expect("cursor")
+        .with_request_context(
+            path,
+            BTreeMap::from([("limit".to_owned(), serde_json::json!(25))]),
+            Some(MistTarget::org(other_org).expect("target")),
+        )
+        .expect("context");
+        let encoded = hex::encode(serde_json::to_vec(&mismatched_cursor).expect("serialize"));
+        // The dispatcher's own schema validation of the canned response body
+        // is irrelevant here; what matters is whether the authorization
+        // checks let the request past the cursor branch to the Mist client.
+        let _result = handler
+            .invoke_dispatcher(
+                "invoke_mist_read",
+                InvokeReadArgs {
+                    operation_id: "listOrgSites".to_owned(),
+                    path: None,
+                    query: None,
+                    cursor: Some(encoded),
+                },
+                MistCapability::OrdinaryRead,
+                &rmcp::model::Extensions::new(),
+            )
+            .await;
+        assert_eq!(
+            recorder.0.lock().expect("recorder").len(),
+            1,
+            "the request authorized against its path-derived target must reach the Mist client"
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
