@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use mecmcp_secret::{OutboundSecret, SecretLimits, load_from_env, load_from_file};
 use serde::{Deserialize, Serialize};
 use url::{Host, Url};
 
@@ -28,8 +29,9 @@ pub enum ConfigError {
 
 /// One strict version-one Mist profile.
 ///
-/// The credential file is validated as metadata only. Its contents are never
-/// read here; loading the API token remains blocked on the shared #90 seam.
+/// The credential source is validated as metadata only (env variable name, or
+/// file path and permissions). Its contents are never read here; loading the
+/// API token happens through [`MistConfig::load_secret`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MistConfig {
@@ -37,8 +39,14 @@ pub struct MistConfig {
     pub version: u32,
     /// HTTPS regional Mist API root.
     pub endpoint: String,
-    /// Absolute, regular mode-0600 API-token file.
-    pub credential_file: PathBuf,
+    /// Environment variable holding the API token. Mutually exclusive with
+    /// `credential_file`.
+    #[serde(default)]
+    pub credential_env: Option<String>,
+    /// Absolute, regular mode-0600 API-token file. Mutually exclusive with
+    /// `credential_env`.
+    #[serde(default)]
+    pub credential_file: Option<PathBuf>,
     /// Exact organization UUIDs visible to this profile.
     pub allowed_orgs: Vec<String>,
 }
@@ -66,13 +74,48 @@ impl MistConfig {
             return Err(ConfigError::Invalid("unsupported config version"));
         }
         self.base_url()?;
-        validate_credential_file(&self.credential_file)?;
+        match (&self.credential_env, &self.credential_file) {
+            (Some(variable), None) => validate_env_name(variable)?,
+            (None, Some(path)) => validate_credential_file(path)?,
+            (Some(_), Some(_)) => {
+                return Err(ConfigError::Invalid(
+                    "exactly one of credential_env or credential_file must be set, not both",
+                ));
+            }
+            (None, None) => {
+                return Err(ConfigError::Invalid(
+                    "one of credential_env or credential_file must be set",
+                ));
+            }
+        }
         validate_allowed_orgs(&self.allowed_orgs)
     }
 
     /// Parse the configured HTTPS root for later Mist-specific request joining.
     pub(crate) fn base_url(&self) -> Result<Url, ConfigError> {
         validate_mist_endpoint(&self.endpoint)
+    }
+
+    /// Load this profile's API token from its configured source.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::CredentialMetadata`] when the hardened loader
+    /// refuses the source (missing, unsafe permissions, oversized, etc.).
+    pub fn load_secret(&self) -> Result<OutboundSecret, ConfigError> {
+        let limits = SecretLimits::default();
+        match (&self.credential_env, &self.credential_file) {
+            (Some(variable), None) => load_from_env(variable, limits).map_err(|error| {
+                ConfigError::CredentialMetadata(std::io::Error::other(error.to_string()))
+            }),
+            (None, Some(path)) => load_from_file(path, limits).map_err(|error| {
+                ConfigError::CredentialMetadata(std::io::Error::other(error.to_string()))
+            }),
+            // `validate()` already rejects both-set and neither-set profiles;
+            // any `MistConfig` reaching this point satisfied that check.
+            _ => Err(ConfigError::Invalid(
+                "exactly one of credential_env or credential_file must be set",
+            )),
+        }
     }
 }
 
@@ -136,6 +179,20 @@ fn validate_credential_file(path: &Path) -> Result<(), ConfigError> {
     if std::os::unix::fs::MetadataExt::mode(&metadata) & 0o777 != 0o600 {
         return Err(ConfigError::Invalid(
             "credential file permissions must be exactly 0600",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_env_name(value: &str) -> Result<(), ConfigError> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    {
+        return Err(ConfigError::Invalid(
+            "credential_env must be 1-128 ASCII alphanumeric/underscore bytes",
         ));
     }
     Ok(())

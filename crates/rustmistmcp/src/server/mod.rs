@@ -359,8 +359,8 @@ impl MistHandler {
 
     /// Construct a production handler with real HTTPS client.
     ///
-    /// Loads the credential from the config's credential_file and constructs
-    /// an HttpMistClient with mecmcp-http.
+    /// Loads the credential from the config's configured source and
+    /// constructs an HttpMistClient with mecmcp-http.
     ///
     /// # Errors
     ///
@@ -400,12 +400,12 @@ impl MistHandler {
         approval_digest_key: Option<mecmcp_changeset::ApprovalDigestKey>,
         approval_timeout: std::time::Duration,
     ) -> Result<Self, MistServerError> {
-        // Load credential using mecmcp-secret (enforces mode 0600)
-        let credential = mecmcp_secret::load_from_file(
-            &config.credential_file,
-            mecmcp_secret::SecretLimits::default(),
-        )
-        .map_err(|error| MistServerError::CredentialLoad(error.to_string()))?;
+        // Load credential from whichever source this profile configured
+        // (env var or hardened mode-0600 file; `MistConfig::validate` already
+        // rejected both-set or neither-set profiles).
+        let credential = config
+            .load_secret()
+            .map_err(|error| MistServerError::CredentialLoad(error.to_string()))?;
 
         // Build HttpMistClient
         let catalog = Arc::new(rustmistmcp_core::Catalog::embedded()?);
