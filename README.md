@@ -274,7 +274,7 @@ For each release candidate, build from a clean tree with
 objdump -T bin/rustmistmcp | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -Vu | tail -1
 ```
 
-Release CI produces checksums, an SBOM, provenance, multi-architecture OCI
+Release CI produces checksums, an SBOM, provenance, `linux/amd64` OCI
 images, and an immutable digest record. Refresh the upstream reference/spec once
 at RC, regenerate the catalog, review the delta, and require zero parity gaps
 before any separate deployment acceptance.

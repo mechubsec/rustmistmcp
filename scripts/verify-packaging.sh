@@ -311,7 +311,7 @@ for workflow in .github/workflows/ci.yml .github/workflows/release.yml .github/w
         failures=$((failures + 1))
     fi
 done
-require_contains .github/workflows/release.yml 'linux/amd64,linux/arm64'
+require_contains .github/workflows/release.yml 'platforms: linux/amd64'
 require_contains .github/workflows/release.yml 'provenance: mode=max'
 require_contains .github/workflows/release.yml 'sbom: true'
 require_contains .github/workflows/release.yml "tags: ['v*-rc*', 'v*.*.*']"

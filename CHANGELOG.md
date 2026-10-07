@@ -12,6 +12,11 @@ visible rather than looking like those versions never existed.
 
 ### Changed
 
+- The container image is published for `linux/amd64` only; the `linux/arm64`
+  build and its QEMU setup are dropped.
+
+### Changed
+
 - **Release tarball and checksum are now uploaded to the GitHub release and
   cosign-signed** (MEC-2158). The CI-built, attested LXC-style release
   archive previously only reached a CI artifact; a new workflow triggered on
