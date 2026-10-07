@@ -12,6 +12,19 @@ visible rather than looking like those versions never existed.
 
 ### Changed
 
+- **Release tarball and checksum are now uploaded to the GitHub release and
+  cosign-signed** (MEC-2158). The CI-built, attested LXC-style release
+  archive previously only reached a CI artifact; a new workflow triggered on
+  release publication now attaches `*.tar.gz`/`*.sha256` to the release and
+  signs the tarball via mecmcp's shared keyless-cosign workflow, matching
+  rustjunosmcp's release process.
+- **Archive SBOM switched from SPDX to CycloneDX** (MEC-2158), generated via
+  `cargo-cyclonedx` instead of `anchore/sbom-action`, for consistency with
+  the org-wide SBOM standard (mecmcp's `docs/RELEASE-WORKFLOWS.md`) used by
+  every other repo's SBOM job. The SBOM is not yet attached to the GitHub
+  release itself; that is blocked on a shared mecmcp workflow landing and
+  will follow in a separate change.
+
 - **Re-pinned the `mecmcp-*` crates from `v0.25.0` to `v0.26.0`** (MEC-1236).
   Brings in mecmcp's `Profile` extension hooks for vendor-specific redaction
   rules and a fix for a reachable panic in `mecmcp-redact`'s text redaction
