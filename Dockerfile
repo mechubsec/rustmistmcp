@@ -18,6 +18,8 @@ LABEL org.opencontainers.image.title="rustmistmcp" \
       org.opencontainers.image.created="$CREATED" \
       org.opencontainers.image.source="https://github.com/mechubsec/rustmistmcp" \
       org.opencontainers.image.licenses="MIT"
+# Official MCP Registry ownership check: must equal server.json "name".
+LABEL io.modelcontextprotocol.server.name="io.github.mechubsec/rustmistmcp"
 COPY --from=builder /workspace/target/release/rustmistmcp /usr/local/bin/rustmistmcp
 USER 65532:65532
 EXPOSE 30030
