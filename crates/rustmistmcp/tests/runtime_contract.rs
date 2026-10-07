@@ -1016,9 +1016,13 @@ fn example_uses_absolute_operator_paths_and_runtime_is_honest_about_blockers() {
     let raw = include_str!("../../../examples/mist.example.json");
     let config: MistConfig = serde_json::from_str(raw).expect("strict example schema");
     assert_eq!(config.version, 1);
-    assert!(config.credential_file.is_absolute());
+    let credential_file = config
+        .credential_file
+        .as_ref()
+        .expect("example config uses the file credential source");
+    assert!(credential_file.is_absolute());
     assert_eq!(
-        config.credential_file.to_string_lossy(),
+        credential_file.to_string_lossy(),
         "/etc/rustmistmcp/mist-api-token"
     );
     // The blocker names the credential, not `mecmcp#90` — that foundation

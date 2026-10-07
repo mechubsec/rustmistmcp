@@ -48,7 +48,7 @@ fn strict_singleton_v1_config_accepts_only_safe_profile_metadata() {
 
     assert_eq!(config.version, 1);
     assert_eq!(config.endpoint, "https://api.eu.mist.com/");
-    assert_eq!(config.credential_file, credential_file);
+    assert_eq!(config.credential_file, Some(credential_file));
     assert_eq!(config.allowed_orgs, [ORG, OTHER_ORG]);
     let serialized = serde_json::to_string(&config).expect("serialize config");
     assert!(serialized.contains("credential_file"));
@@ -153,6 +153,97 @@ fn config_validates_credential_metadata_without_loading_the_secret() {
 
     fs::set_permissions(&credential_file, fs::Permissions::from_mode(0o640)).expect("weaken mode");
     assert!(config_from(&temp, config_json(&credential_file, "https://api.mist.com")).is_err());
+}
+
+/// A container's `ENTRYPOINT` passes a fixed `--device-mapping` path, and a
+/// Docker MCP Toolkit catalog deployment mounts a bind-mount-owned secret
+/// file onto an image running as a non-root uid -- a file the image user
+/// cannot always read. `credential_env` lets the catalog supply the API
+/// token as an environment variable the registry declares under
+/// `config.secrets` instead, with the value never on argv or in the
+/// inventory JSON (MEC-2121).
+#[test]
+fn config_accepts_credential_env_and_rejects_both_or_neither_source() {
+    let temp = TempDir::new().expect("tempdir");
+
+    let env_only = serde_json::json!({
+        "version": 1,
+        "endpoint": "https://api.mist.com",
+        "credential_env": "RUSTMISTMCP_TOKEN",
+        "allowed_orgs": [ORG],
+    });
+    let config = config_from(&temp, env_only.to_string()).expect("credential_env is valid alone");
+    assert_eq!(config.credential_env.as_deref(), Some("RUSTMISTMCP_TOKEN"));
+    assert_eq!(config.credential_file, None);
+    let serialized = serde_json::to_string(&config).expect("serialize config");
+    assert!(serialized.contains("RUSTMISTMCP_TOKEN"));
+
+    let neither = serde_json::json!({
+        "version": 1,
+        "endpoint": "https://api.mist.com",
+        "allowed_orgs": [ORG],
+    });
+    assert!(config_from(&temp, neither.to_string()).is_err());
+
+    let credential_file = credential(&temp);
+    let both = serde_json::json!({
+        "version": 1,
+        "endpoint": "https://api.mist.com",
+        "credential_env": "RUSTMISTMCP_TOKEN",
+        "credential_file": credential_file,
+        "allowed_orgs": [ORG],
+    });
+    assert!(config_from(&temp, both.to_string()).is_err());
+
+    for bad_name in ["", "has space", "has-dash", "has.dot"] {
+        let bad = serde_json::json!({
+            "version": 1,
+            "endpoint": "https://api.mist.com",
+            "credential_env": bad_name,
+            "allowed_orgs": [ORG],
+        });
+        assert!(config_from(&temp, bad.to_string()).is_err(), "{bad_name:?}");
+    }
+}
+
+#[test]
+fn load_secret_reads_from_whichever_source_is_configured() {
+    let temp = TempDir::new().expect("tempdir");
+
+    // Setting process-wide environment variables in-process is unsafe (and
+    // forbidden in this workspace) because it races every other test thread
+    // reading the environment. The env branch is proven instead by its
+    // failure mode: a variable this test never sets still names itself (not
+    // a file path) in the error, showing `load_secret` reached
+    // `load_from_env` rather than `load_from_file`.
+    let env_config = MistConfig {
+        version: 1,
+        endpoint: "https://api.mist.com".to_owned(),
+        credential_env: Some("RUSTMISTMCP_CONTRACT_TEST_TOKEN_UNSET".to_owned()),
+        credential_file: None,
+        allowed_orgs: vec![ORG.to_owned()],
+    };
+    let error = match env_config.load_secret() {
+        Err(error) => error,
+        Ok(_) => panic!("RUSTMISTMCP_CONTRACT_TEST_TOKEN_UNSET must not be set in this test run"),
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("RUSTMISTMCP_CONTRACT_TEST_TOKEN_UNSET"),
+        "{error}"
+    );
+
+    let credential_file = credential(&temp);
+    let file_config = MistConfig {
+        version: 1,
+        endpoint: "https://api.mist.com".to_owned(),
+        credential_env: None,
+        credential_file: Some(credential_file),
+        allowed_orgs: vec![ORG.to_owned()],
+    };
+    let secret = file_config.load_secret().expect("load from file");
+    assert_eq!(secret.expose(), "must-not-be-read-by-config");
 }
 
 #[test]
