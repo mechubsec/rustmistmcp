@@ -190,21 +190,29 @@ secret files accessible to numeric UID/GID `65532`:
 install -d -m 0750 packaging/container/runtime
 install -d -m 0700 packaging/container/state
 cp examples/mist.example.json packaging/container/runtime/mist.json
-printf '%s\n' '{"version":1,"tokens":[]}' > packaging/container/runtime/tokens.json
+printf '%s\n' '{"version":1,"tokens":[]}' > packaging/container/state/tokens.json
 install -m 0600 /dev/null packaging/container/runtime/mist-api-token
-sudo chown root:65532 packaging/container/runtime/mist.json
+# Populate this before starting Compose; it is mounted at the path referenced
+# by mist.json and must never be put in an environment variable or command.
+read -sp 'Mist API token: ' token && printf '%s' "$token" > packaging/container/runtime/mist-api-token && unset token
+# Mint the bearer token into the state mount before starting Compose. The
+# secret is printed once; store it in the client that will call this server.
+rustmistmcp token add --tokens-file packaging/container/state/tokens.json \
+  --name my-client --devices '*' --tools '*' \
+  -f packaging/container/runtime/mist.json
+# Set modes before ownership so the files remain 0600 after chown.
+chmod 0600 packaging/container/runtime/mist-api-token packaging/container/state/tokens.json
 sudo chmod 0640 packaging/container/runtime/mist.json
+sudo chown root:65532 packaging/container/runtime/mist.json
 sudo chown 65532:65532 packaging/container/runtime/mist-api-token \
-  packaging/container/runtime/tokens.json
+  packaging/container/state/tokens.json
 sudo chown -R 65532:65532 packaging/container/state
-chmod 0600 packaging/container/runtime/mist-api-token \
-  packaging/container/runtime/tokens.json
 RUSTMISTMCP_IMAGE='ghcr.io/mechubsec/rustmistmcp@sha256:<verified-64-hex-digest>' \
   docker compose -f packaging/container/compose.example.yaml up
 ```
 
-Populate the two empty secret files without placing their values in an
-environment variable, command argument, image layer, or Compose file.
+Do not place either secret in an environment variable, command argument, image
+layer, or Compose file.
 Grant-bearing MCP bearer-token add/list/revoke/rotate is the shared
 `token_cmd::run_with_grant`; the private Mist-typed adapter that once bridged it
 is deleted. New tokens created by `token add` remain grantless; the shared
