@@ -52,7 +52,7 @@ jobs:
           cargo deny check
       - name: Validate YAML and compose
         run: |
-          for file in .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/security.yml .github/dependabot.yml packaging/container/compose.example.yaml; do
+          for file in .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/release-sign-tarball.yml .github/workflows/security.yml .github/dependabot.yml packaging/container/compose.example.yaml; do
             npm exec --yes --package=yaml@2.8.1 yaml -- valid "$file"
           done
           RUSTMISTMCP_IMAGE=ghcr.io/mechubsec/rustmistmcp@sha256:0000000000000000000000000000000000000000000000000000000000000000 docker compose -f packaging/container/compose.example.yaml config
@@ -149,19 +149,37 @@ jobs:
         run: |
           archive=$(find dist -name '*.tar.gz' -print -quit)
           scripts/smoke-release-archive.sh "$archive" "$archive.sha256"
-      - name: Generate archive SBOM
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
-        with:
-          path: dist
-          format: spdx-json
-          output-file: dist/rustmistmcp-archive.spdx.json
+      - name: Generate archive SBOM (CycloneDX)
+        # cargo-cyclonedx, not anchore/sbom-action: the org standard
+        # (mecmcp's docs/RELEASE-WORKFLOWS.md, mecmcp's own security.yml,
+        # rustjunosmcp's release-sbom.yml) is CycloneDX via cargo-cyclonedx,
+        # not SPDX. Version pin matches mecmcp's security.yml sbom job.
+        run: |
+          set -euo pipefail
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo cyclonedx --format json --manifest-path crates/rustmistmcp/Cargo.toml
+          cp crates/rustmistmcp/rustmistmcp.cdx.json dist/rustmistmcp-archive.cdx.json
+      - name: Validate SBOM shape
+        run: |
+          set -euo pipefail
+          sbom=dist/rustmistmcp-archive.cdx.json
+          format=$(jq -r '.bomFormat' "$sbom")
+          [[ "$format" == "CycloneDX" ]] || {
+            echo "$sbom: bomFormat is '$format', not CycloneDX" >&2
+            exit 1
+          }
+          component_count=$(jq '.components | length' "$sbom")
+          [[ "$component_count" -gt 0 ]] || {
+            echo "$sbom: components array is empty" >&2
+            exit 1
+          }
       - name: Attest archive provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: |
             dist/*.tar.gz
             dist/*.sha256
-            dist/*.spdx.json
+            dist/*.cdx.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: rustmistmcp-archive
