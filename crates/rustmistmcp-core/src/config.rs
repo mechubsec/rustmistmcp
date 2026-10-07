@@ -26,6 +26,30 @@ pub enum ConfigError {
     Invalid(&'static str),
 }
 
+/// Where the Mist API token comes from.
+///
+/// A file path and an environment variable name are each safe on their own
+/// but mean different things to a container: the MCP Toolkit registry
+/// declares `config.secrets` as env vars it injects at `docker run` time, not
+/// as files it can mount read-write, so a stdio catalog deployment needs
+/// `Env` even though every existing on-disk deployment uses `File`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CredentialSource {
+    /// Absolute, regular mode-0600 API-token file.
+    File {
+        /// Path to the token file.
+        path: PathBuf,
+    },
+    /// Plaintext API token read from an environment variable at startup.
+    /// The variable name is validated at load time; the value is never
+    /// written to the inventory file or argv.
+    Env {
+        /// Name of the environment variable holding the plaintext token.
+        name: String,
+    },
+}
+
 /// One strict version-one Mist profile.
 ///
 /// The credential file is validated as metadata only. Its contents are never
@@ -37,8 +61,8 @@ pub struct MistConfig {
     pub version: u32,
     /// HTTPS regional Mist API root.
     pub endpoint: String,
-    /// Absolute, regular mode-0600 API-token file.
-    pub credential_file: PathBuf,
+    /// Where the Mist API token is loaded from.
+    pub credential: CredentialSource,
     /// Exact organization UUIDs visible to this profile.
     pub allowed_orgs: Vec<String>,
 }
@@ -66,7 +90,7 @@ impl MistConfig {
             return Err(ConfigError::Invalid("unsupported config version"));
         }
         self.base_url()?;
-        validate_credential_file(&self.credential_file)?;
+        validate_credential(&self.credential)?;
         validate_allowed_orgs(&self.allowed_orgs)
     }
 
@@ -120,6 +144,13 @@ fn is_mist_regional_host(host: &str) -> bool {
         && labels[3].eq_ignore_ascii_case("com")
 }
 
+fn validate_credential(credential: &CredentialSource) -> Result<(), ConfigError> {
+    match credential {
+        CredentialSource::File { path } => validate_credential_file(path),
+        CredentialSource::Env { name } => validate_credential_env_name(name),
+    }
+}
+
 fn validate_credential_file(path: &Path) -> Result<(), ConfigError> {
     if !path.is_absolute() {
         return Err(ConfigError::Invalid(
@@ -139,6 +170,25 @@ fn validate_credential_file(path: &Path) -> Result<(), ConfigError> {
         ));
     }
     Ok(())
+}
+
+/// Environment variable name: 1..=128 ASCII uppercase alnum + `_`, not
+/// starting with a digit. The name is never a secret, so there is no reason
+/// to accept the exotic byte sequences a file path must tolerate.
+fn validate_credential_env_name(name: &str) -> Result<(), ConfigError> {
+    let valid = !name.is_empty()
+        && name.len() <= 128
+        && !name.starts_with(|c: char| c.is_ascii_digit())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+    if valid {
+        Ok(())
+    } else {
+        Err(ConfigError::Invalid(
+            "credential env name must be 1-128 uppercase ASCII alphanumeric/underscore bytes, not starting with a digit",
+        ))
+    }
 }
 
 fn validate_allowed_orgs(allowed_orgs: &[String]) -> Result<(), ConfigError> {

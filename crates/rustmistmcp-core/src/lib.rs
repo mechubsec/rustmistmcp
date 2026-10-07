@@ -18,7 +18,7 @@ pub use client::{
     BlockedMistClient, HttpMistClient, HttpMistClientConfig, HttpMistClientError, MistClient,
     MistError,
 };
-pub use config::{ConfigError, MistConfig, validate_mist_endpoint};
+pub use config::{ConfigError, CredentialSource, MistConfig, validate_mist_endpoint};
 pub use grant::MistGrant;
 pub use pagination::{
     MAX_ENCODED_CURSOR_BYTES, MistCursor, MistCursorRequestContext, MistPageInfo,

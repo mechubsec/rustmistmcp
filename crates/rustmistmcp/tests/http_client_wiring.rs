@@ -399,7 +399,9 @@ async fn from_config_constructs_a_real_client_not_the_blocked_stub() {
     let config = MistConfig {
         version: 1,
         endpoint: "https://api.mist.com".to_owned(),
-        credential_file,
+        credential: rustmistmcp_core::CredentialSource::File {
+            path: credential_file,
+        },
         allowed_orgs: vec!["11111111-1111-1111-1111-111111111111".to_owned()],
     };
 

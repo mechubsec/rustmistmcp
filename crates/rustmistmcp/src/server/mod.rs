@@ -359,8 +359,8 @@ impl MistHandler {
 
     /// Construct a production handler with real HTTPS client.
     ///
-    /// Loads the credential from the config's credential_file and constructs
-    /// an HttpMistClient with mecmcp-http.
+    /// Loads the credential from the config's `credential` source and
+    /// constructs an HttpMistClient with mecmcp-http.
     ///
     /// # Errors
     ///
@@ -400,11 +400,16 @@ impl MistHandler {
         approval_digest_key: Option<mecmcp_changeset::ApprovalDigestKey>,
         approval_timeout: std::time::Duration,
     ) -> Result<Self, MistServerError> {
-        // Load credential using mecmcp-secret (enforces mode 0600)
-        let credential = mecmcp_secret::load_from_file(
-            &config.credential_file,
-            mecmcp_secret::SecretLimits::default(),
-        )
+        // Load credential using mecmcp-secret (file: enforces mode 0600; env:
+        // read fresh here, not cached, so rotating it takes effect on restart).
+        let credential = match &config.credential {
+            rustmistmcp_core::CredentialSource::File { path } => {
+                mecmcp_secret::load_from_file(path, mecmcp_secret::SecretLimits::default())
+            }
+            rustmistmcp_core::CredentialSource::Env { name } => {
+                mecmcp_secret::load_from_env(name, mecmcp_secret::SecretLimits::default())
+            }
+        }
         .map_err(|error| MistServerError::CredentialLoad(error.to_string()))?;
 
         // Build HttpMistClient

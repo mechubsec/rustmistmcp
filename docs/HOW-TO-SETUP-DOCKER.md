@@ -93,18 +93,27 @@ cd mist-docker
 ```
 
 **`mist.json`** — the Mist profile. Note that the **credential is not in it**;
-it is referenced by `credential_file`:
+it is referenced by `credential`, either a mounted file or an environment
+variable:
 
 ```json
 {
   "version": 1,
   "endpoint": "https://api.mist.com/",
-  "credential_file": "/etc/rustmistmcp/mist-api-token",
+  "credential": {
+    "type": "file",
+    "path": "/etc/rustmistmcp/mist-api-token"
+  },
   "allowed_orgs": [
     "00000000-0000-0000-0000-000000000000"
   ]
 }
 ```
+
+A stdio deployment that injects the token as an environment variable instead
+of a mounted file (for example the MCP Toolkit registry's `config.secrets`)
+uses `{"type": "env", "name": "MIST_API_TOKEN"}` instead — the variable is
+read fresh at startup, never written to this file or to argv.
 
 Replace `endpoint` with your region's Mist API endpoint (`api.mist.com`,
 `api.eu.mist.com`, or `api.gc1.mist.com`) and populate `allowed_orgs` with

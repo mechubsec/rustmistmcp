@@ -24,7 +24,7 @@ fn config_json(credential_file: &std::path::Path, endpoint: &str) -> String {
     serde_json::json!({
         "version": 1,
         "endpoint": endpoint,
-        "credential_file": credential_file,
+        "credential": {"type": "file", "path": credential_file},
         "allowed_orgs": [ORG, OTHER_ORG],
     })
     .to_string()
@@ -48,10 +48,15 @@ fn strict_singleton_v1_config_accepts_only_safe_profile_metadata() {
 
     assert_eq!(config.version, 1);
     assert_eq!(config.endpoint, "https://api.eu.mist.com/");
-    assert_eq!(config.credential_file, credential_file);
+    assert_eq!(
+        config.credential,
+        rustmistmcp_core::CredentialSource::File {
+            path: credential_file.clone()
+        }
+    );
     assert_eq!(config.allowed_orgs, [ORG, OTHER_ORG]);
     let serialized = serde_json::to_string(&config).expect("serialize config");
-    assert!(serialized.contains("credential_file"));
+    assert!(serialized.contains("credential"));
     assert!(!serialized.contains("must-not-be-read-by-config"));
 }
 
@@ -70,23 +75,23 @@ fn config_distinguishes_file_and_parse_failures_and_rejects_alternate_shapes() {
     let credential_file = credential(&temp);
     for json in [
         serde_json::json!({
-            "version": 1, "endpoint": "https://api.mist.com", "credential_file": credential_file,
+            "version": 1, "endpoint": "https://api.mist.com", "credential": {"type": "file", "path": credential_file},
             "allowed_orgs": [ORG], "token": "never-supported"
         }),
         serde_json::json!({
-            "version": 2, "endpoint": "https://api.mist.com", "credential_file": credential_file,
+            "version": 2, "endpoint": "https://api.mist.com", "credential": {"type": "file", "path": credential_file},
             "allowed_orgs": [ORG]
         }),
         serde_json::json!({
-            "version": 1, "endpoint": "https://api.mist.com", "credential_file": credential_file,
+            "version": 1, "endpoint": "https://api.mist.com", "credential": {"type": "file", "path": credential_file},
             "allowed_orgs": []
         }),
         serde_json::json!({
-            "version": 1, "endpoint": "https://api.mist.com", "credential_file": credential_file,
+            "version": 1, "endpoint": "https://api.mist.com", "credential": {"type": "file", "path": credential_file},
             "allowed_orgs": [ORG, ORG]
         }),
         serde_json::json!({
-            "version": 1, "endpoint": "https://api.mist.com", "credential_file": credential_file,
+            "version": 1, "endpoint": "https://api.mist.com", "credential": {"type": "file", "path": credential_file},
             "allowed_orgs": ["123E4567-E89B-42D3-A456-426614174000"]
         }),
     ] {
@@ -97,7 +102,7 @@ fn config_distinguishes_file_and_parse_failures_and_rejects_alternate_shapes() {
         .map(|index| format!("123e4567-e89b-42d3-a456-{index:012x}"))
         .collect();
     let too_many = serde_json::json!({
-        "version": 1, "endpoint": "https://api.mist.com", "credential_file": credential_file,
+        "version": 1, "endpoint": "https://api.mist.com", "credential": {"type": "file", "path": credential_file},
         "allowed_orgs": too_many_orgs,
     });
     assert!(config_from(&temp, too_many.to_string()).is_err());
@@ -153,6 +158,47 @@ fn config_validates_credential_metadata_without_loading_the_secret() {
 
     fs::set_permissions(&credential_file, fs::Permissions::from_mode(0o640)).expect("weaken mode");
     assert!(config_from(&temp, config_json(&credential_file, "https://api.mist.com")).is_err());
+}
+
+#[test]
+fn config_accepts_an_env_credential_source_without_touching_the_filesystem() {
+    let temp = TempDir::new().expect("tempdir");
+    let json = serde_json::json!({
+        "version": 1,
+        "endpoint": "https://api.mist.com",
+        "credential": {"type": "env", "name": "MIST_API_TOKEN"},
+        "allowed_orgs": [ORG],
+    });
+    let config = config_from(&temp, json.to_string()).expect("env credential is valid");
+    assert_eq!(
+        config.credential,
+        rustmistmcp_core::CredentialSource::Env {
+            name: "MIST_API_TOKEN".to_owned()
+        }
+    );
+}
+
+#[test]
+fn config_rejects_malformed_env_credential_names() {
+    let temp = TempDir::new().expect("tempdir");
+    for name in [
+        "",
+        "lower_case",
+        "1LEADING_DIGIT",
+        "has space",
+        &"X".repeat(129),
+    ] {
+        let json = serde_json::json!({
+            "version": 1,
+            "endpoint": "https://api.mist.com",
+            "credential": {"type": "env", "name": name},
+            "allowed_orgs": [ORG],
+        });
+        assert!(
+            config_from(&temp, json.to_string()).is_err(),
+            "should reject env name: {name:?}"
+        );
+    }
 }
 
 #[test]

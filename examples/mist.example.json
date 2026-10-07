@@ -1,7 +1,10 @@
 {
   "version": 1,
   "endpoint": "https://api.mist.com/",
-  "credential_file": "/etc/rustmistmcp/mist-api-token",
+  "credential": {
+    "type": "file",
+    "path": "/etc/rustmistmcp/mist-api-token"
+  },
   "allowed_orgs": [
     "11111111-1111-1111-1111-111111111111"
   ]

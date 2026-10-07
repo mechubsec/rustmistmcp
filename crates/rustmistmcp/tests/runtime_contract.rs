@@ -9,7 +9,9 @@ use rustmistmcp::{
     AuthConfig, KNOWN_TOOLS, LIVE_MIST_BLOCKER, MistHandler, MistScopePreflight, RESTRICTED_TOOLS,
     build_http_router, install_token_reload_handler,
 };
-use rustmistmcp_core::{MistAction, MistConfig, MistGrant, MistTarget};
+use rustmistmcp_core::{
+    CredentialSource as MistCredentialSource, MistAction, MistConfig, MistGrant, MistTarget,
+};
 use std::{collections::BTreeMap, fs, path::Path, process::Command, sync::Arc, time::Duration};
 
 const ORG_ID: &str = "11111111-1111-1111-1111-111111111111";
@@ -1016,11 +1018,11 @@ fn example_uses_absolute_operator_paths_and_runtime_is_honest_about_blockers() {
     let raw = include_str!("../../../examples/mist.example.json");
     let config: MistConfig = serde_json::from_str(raw).expect("strict example schema");
     assert_eq!(config.version, 1);
-    assert!(config.credential_file.is_absolute());
-    assert_eq!(
-        config.credential_file.to_string_lossy(),
-        "/etc/rustmistmcp/mist-api-token"
-    );
+    let MistCredentialSource::File { path } = &config.credential else {
+        panic!("example config must use a file credential source");
+    };
+    assert!(path.is_absolute());
+    assert_eq!(path.to_string_lossy(), "/etc/rustmistmcp/mist-api-token");
     // The blocker names the credential, not `mecmcp#90` — that foundation
     // landed, and citing a closed issue would misreport why a call refused.
     assert!(!LIVE_MIST_BLOCKER.contains("mecmcp#90"));
