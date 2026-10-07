@@ -1,0 +1,93 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.mechubsec/rustmistmcp",
+  "title": "rustmistmcp",
+  "description": "HPE Juniper Mist MCP server: scoped, audited, two-person change control. Rust.",
+  "version": "0.3.2",
+  "websiteUrl": "https://mechub.org/projects/rustmistmcp/",
+  "repository": {
+    "url": "https://github.com/mechubsec/rustmistmcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/mechubsec/rustmistmcp:0.3.2",
+      "runtimeHint": "docker",
+      "runtimeArguments": [
+        {
+          "type": "positional",
+          "value": "--rm",
+          "isRequired": true
+        },
+        {
+          "type": "positional",
+          "value": "-i",
+          "isRequired": true
+        },
+        {
+          "type": "named",
+          "name": "--user",
+          "value": "65532:65532",
+          "isRequired": true
+        },
+        {
+          "type": "named",
+          "name": "-v",
+          "value": "{config_file}:/etc/rustmistmcp/mist.json:ro",
+          "isRequired": true,
+          "variables": {
+            "config_file": {
+              "description": "Absolute host path to mist.json. The API token is a separate file, not a value in this manifest.",
+              "format": "filepath",
+              "isRequired": true
+            }
+          }
+        },
+        {
+          "type": "named",
+          "name": "-v",
+          "value": "{credential_file}:/etc/rustmistmcp/mist-api-token:ro",
+          "isRequired": true,
+          "variables": {
+            "credential_file": {
+              "description": "Absolute host path of the API token file named by mist.json. Supply the path only; the token stays in that file.",
+              "format": "filepath",
+              "isRequired": true
+            }
+          }
+        },
+        {
+          "type": "named",
+          "name": "-v",
+          "value": "{state_dir}:/var/lib/rustmistmcp",
+          "isRequired": true,
+          "variables": {
+            "state_dir": {
+              "description": "Absolute host directory for change-set state and the audit HMAC key (audit-hmac.key). Must be writable by UID 65532. The image creates the key on first start when the file is absent.",
+              "format": "filepath",
+              "isRequired": true
+            }
+          }
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--transport",
+          "value": "stdio",
+          "isRequired": true
+        },
+        {
+          "type": "named",
+          "name": "--state-file",
+          "value": "/var/lib/rustmistmcp/changeset-state.json",
+          "isRequired": true
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
