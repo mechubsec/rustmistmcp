@@ -6,12 +6,15 @@ use anyhow::{Context as _, Result};
 use clap::Parser as _;
 use cli::{Command, MistCli, Transport};
 use mecmcp_auth::TokenStoreFile;
+use mecmcp_secret::naming::{ServerNaming, known};
+use mecmcp_secret::validate::{CredentialFileRole, CredentialFileSpec, validate_credential_files};
 use rmcp::ServiceExt as _;
 use rustmistmcp::{
     AuthConfig, KNOWN_TOOLS, MistHandler, install_audit_reopen_handler,
     install_token_reload_handler, serve_http,
 };
 use rustmistmcp_core::{MistConfig, MistGrant};
+use std::path::{Path, PathBuf};
 use std::{collections::BTreeMap, net::SocketAddr, sync::Arc};
 
 #[tokio::main]
@@ -67,6 +70,26 @@ async fn main() -> Result<()> {
     // `install_default` errors if a provider is already set; that is a benign
     // race with anything else in-process, so it is deliberately ignored.
     let _ = rustls::crypto::ring::default_provider().install_default();
+
+    // Resolve before the mode pass so a legacy `/etc` store is the file that
+    // gets checked, not the canonical path that is not there yet. Stdio never
+    // loads that store: the image ENTRYPOINT always passes `--tokens-file`,
+    // and `docker run -i <image> --transport stdio` must still start when
+    // nothing is mounted at that path.
+    let tokens_resolved = listener_tokens(&args)?;
+    // `init_audit` already created a missing HMAC key, so the mode pass sees
+    // the file it will actually use.
+    let credential_file = configured_credential_file(&args.shared.device_mapping);
+    validate_startup_credentials(&StartupCredentialFiles {
+        config: &args.shared.device_mapping,
+        credential_file: credential_file.as_deref(),
+        tokens: tokens_resolved
+            .as_ref()
+            .map(|resolved| resolved.path.as_path()),
+        audit_hmac_key: args.shared.audit_hmac_key_file.as_deref(),
+        approval_digest_key: args.shared.approval_digest_key_file.as_deref(),
+    })
+    .context("credential file validation")?;
 
     // The shared CLI retains the historic `device_mapping` spelling. Here it
     // selects the singleton Mist profile until mecmcp#91 lands.
@@ -364,6 +387,126 @@ async fn serve_stdio(handler: MistHandler) -> Result<()> {
         .context("MCP stdio service exited with error")
 }
 
+/// Layout for this server. `known::MIST` is the deployed name (`rustmistmcp`),
+/// so these paths stay the ones already on disk.
+fn server_naming() -> ServerNaming {
+    ServerNaming::derive(known::MIST)
+}
+
+/// Canonical token store and the legacy `/etc` location an unmigrated
+/// install may still be using.
+fn token_store_paths() -> (PathBuf, PathBuf) {
+    let naming = server_naming();
+    (
+        naming.state_dir.join("tokens.json"),
+        naming.config_dir.join("tokens.json"),
+    )
+}
+
+/// Token store the HTTP listener will load.
+///
+/// Stdio does not consult `--tokens-file`. The container `ENTRYPOINT` bakes
+/// that flag in, and a stdio start must not fail because the bearer store is
+/// absent.
+fn listener_tokens(args: &MistCli) -> Result<Option<mecmcp_auth::ResolvedTokenPath>> {
+    match args.shared.transport {
+        Transport::Stdio => Ok(None),
+        Transport::StreamableHttp => match args.shared.tokens_file.as_deref() {
+            Some(path) => Ok(Some(resolve_tokens(path)?)),
+            None => Ok(None),
+        },
+    }
+}
+
+/// Credential path named by `mist.json`, when the file parses and names one.
+///
+/// This only discovers the path. Mode is enforced later, with every other
+/// file, by [`validate_startup_credentials`]. A missing or unreadable profile
+/// yields `None`; the mode pass still reports the profile itself.
+fn configured_credential_file(config_path: &Path) -> Option<PathBuf> {
+    let bytes = std::fs::read(config_path).ok()?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    let path = value.get("credential_file")?.as_str()?;
+    if path.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(path))
+    }
+}
+
+/// Files whose mode is checked together, before any of them is loaded.
+///
+/// A startup that checks one file and exits reports the next bad mode only
+/// on the next restart. [`validate_startup_credentials`] asks `mecmcp-secret`
+/// to report every offender in this list at once.
+struct StartupCredentialFiles<'a> {
+    /// `mist.json`. Required. Holds an endpoint, an org allowlist, and either
+    /// an environment-variable name or a credential path — not the API token —
+    /// so group-read (`0640`) is allowed.
+    config: &'a Path,
+    /// API token file named by `credential_file`. Absent when `credential_env`
+    /// is the source, and absent on a fresh install, so a missing file is not
+    /// a failure. A present file with a loose mode is.
+    credential_file: Option<&'a Path>,
+    /// Bearer-token store this process will load. Required when set.
+    tokens: Option<&'a Path>,
+    /// Audit HMAC key. Required when set; the caller creates a missing key first.
+    audit_hmac_key: Option<&'a Path>,
+    /// Approval digest key from `--approval-digest-key-file`. Required when set.
+    approval_digest_key: Option<&'a Path>,
+}
+
+/// Check every credential-adjacent file in one pass.
+///
+/// Existing paths are unchanged: the profile path is whatever
+/// `--device-mapping` names, the credential path is the one that profile
+/// names, and the token path is the one [`resolve_tokens`] already selected,
+/// including the legacy `/etc` store when that fallback is in effect.
+fn validate_startup_credentials(files: &StartupCredentialFiles<'_>) -> Result<()> {
+    let mut specs = Vec::with_capacity(5);
+    specs.push(CredentialFileSpec {
+        path: files.config,
+        role: CredentialFileRole::ConfigNoSecret,
+        description: "Mist profile",
+        required: true,
+    });
+    if let Some(path) = files.credential_file {
+        specs.push(CredentialFileSpec {
+            path,
+            role: CredentialFileRole::Secret,
+            description: "Mist API credential file",
+            required: false,
+        });
+    }
+    if let Some(path) = files.tokens {
+        specs.push(CredentialFileSpec {
+            path,
+            role: CredentialFileRole::Secret,
+            description: "bearer token store",
+            required: true,
+        });
+    }
+    if let Some(path) = files.audit_hmac_key {
+        specs.push(CredentialFileSpec {
+            path,
+            role: CredentialFileRole::Secret,
+            description: "audit HMAC key",
+            required: true,
+        });
+    }
+    if let Some(path) = files.approval_digest_key {
+        specs.push(CredentialFileSpec {
+            path,
+            role: CredentialFileRole::Secret,
+            description: "approval digest key",
+            required: true,
+        });
+    }
+
+    validate_credential_files(&specs)?;
+    Ok(())
+}
+
 /// The migration fallback exists so an upgrade that has not yet moved
 /// `/etc/rustmistmcp/tokens.json` still starts. It must not apply to an operator's
 /// own path: if `--tokens-file /srv/custom.json` is missing — a typo, or a deleted
@@ -371,11 +514,8 @@ async fn serve_stdio(handler: MistHandler) -> Result<()> {
 /// or revoked credentials. A non-canonical path is loaded directly and fails if
 /// absent, which is the honest outcome.
 fn resolve_tokens(configured: &std::path::Path) -> Result<mecmcp_auth::ResolvedTokenPath> {
-    resolve_tokens_with(
-        configured,
-        std::path::Path::new("/var/lib/rustmistmcp/tokens.json"),
-        std::path::Path::new("/etc/rustmistmcp/tokens.json"),
-    )
+    let (canonical, legacy) = token_store_paths();
+    resolve_tokens_with(configured, &canonical, &legacy)
 }
 
 /// The rule behind [`resolve_tokens`], with the two well-known paths injected so
@@ -652,6 +792,15 @@ mod tests {
         );
     }
 
+    /// `known::MIST` keeps the directories already deployed. A rename here would
+    /// move live token stores.
+    #[test]
+    fn derived_token_paths_match_the_deployed_layout() {
+        let (canonical, legacy) = token_store_paths();
+        assert_eq!(canonical, PathBuf::from("/var/lib/rustmistmcp/tokens.json"));
+        assert_eq!(legacy, PathBuf::from("/etc/rustmistmcp/tokens.json"));
+    }
+
     /// The canonical path is absent and the legacy store exists: the fallback
     /// must fire, so an upgrade that has not migrated yet still starts.
     #[test]
@@ -878,5 +1027,113 @@ mod tests {
             web_approver: Default::default(),
             site_refresh_interval_secs: 0,
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+#[allow(clippy::unwrap_used)]
+mod startup_credential_tests {
+    use super::{StartupCredentialFiles, validate_startup_credentials};
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn write_file(dir: &std::path::Path, name: &str, mode: u32) -> std::path::PathBuf {
+        let path = dir.join(name);
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(b"{}\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+        path
+    }
+
+    /// Two loose modes must come back together. The failure this guards is a
+    /// startup that names the first file, exits, and only names the second
+    /// after that restart.
+    #[test]
+    fn one_pass_reports_every_bad_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = write_file(dir.path(), "mist.json", 0o644);
+        let tokens = write_file(dir.path(), "tokens.json", 0o640);
+
+        let error = validate_startup_credentials(&StartupCredentialFiles {
+            config: &config,
+            credential_file: None,
+            tokens: Some(&tokens),
+            audit_hmac_key: None,
+            approval_digest_key: None,
+        })
+        .expect_err("both files are looser than their role allows");
+
+        let message = error.to_string();
+        assert!(
+            message.contains("2 credential file"),
+            "expected both failures in one error, got {message}"
+        );
+        assert!(message.contains("mist.json"), "{message}");
+        assert!(message.contains("tokens.json"), "{message}");
+        assert!(message.contains("0644"), "{message}");
+        assert!(message.contains("0640"), "{message}");
+    }
+
+    /// `0600` is inside the `0640` ceiling for a no-secret profile, and a
+    /// `0600` token store is the secret role. Both must pass together.
+    #[test]
+    fn acceptable_modes_pass_in_one_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = write_file(dir.path(), "mist.json", 0o640);
+        let tokens = write_file(dir.path(), "tokens.json", 0o600);
+        let credential = write_file(dir.path(), "mist-api-token", 0o600);
+
+        validate_startup_credentials(&StartupCredentialFiles {
+            config: &config,
+            credential_file: Some(&credential),
+            tokens: Some(&tokens),
+            audit_hmac_key: None,
+            approval_digest_key: None,
+        })
+        .expect("0640 profile, 0600 credential, and 0600 tokens are the packaged modes");
+    }
+
+    /// A locked-down profile (`0600`) is stricter than `0640` and must still
+    /// start. A missing optional credential file is not a failure.
+    #[test]
+    fn owner_only_config_and_missing_optional_file_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = write_file(dir.path(), "mist.json", 0o600);
+        let missing = dir.path().join("mist-api-token");
+
+        validate_startup_credentials(&StartupCredentialFiles {
+            config: &config,
+            credential_file: Some(&missing),
+            tokens: None,
+            audit_hmac_key: None,
+            approval_digest_key: None,
+        })
+        .expect("0600 profile and an absent optional credential file must pass");
+    }
+
+    /// The credential file holds the API token, so group-read is a failure
+    /// even when the profile next to it is an acceptable `0640`.
+    #[test]
+    fn loose_credential_file_is_a_secret() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = write_file(dir.path(), "mist.json", 0o640);
+        let credential = write_file(dir.path(), "mist-api-token", 0o640);
+
+        let error = validate_startup_credentials(&StartupCredentialFiles {
+            config: &config,
+            credential_file: Some(&credential),
+            tokens: None,
+            audit_hmac_key: None,
+            approval_digest_key: None,
+        })
+        .expect_err("0640 is too loose for the API credential");
+
+        let message = error.to_string();
+        assert!(message.contains("mist-api-token"), "{message}");
+        assert!(message.contains("0600"), "{message}");
+        assert!(
+            !message.contains("mist.json"),
+            "an acceptable profile must not be named, got {message}"
+        );
     }
 }
