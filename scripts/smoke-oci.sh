@@ -30,6 +30,7 @@ cp examples/mist.example.json "$work/runtime/mist.json"
 printf '%s\n' '{"version":1,"tokens":[]}' > "$work/runtime/tokens.json"
 printf '%s\n' 'packaging-smoke-mist-token' > "$work/runtime/mist-api-token"
 printf '%s\n' '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' > "$work/runtime/audit-hmac.key"
+chmod 0640 "$work/runtime/mist.json"
 chmod 0600 "$work/runtime/tokens.json" "$work/runtime/mist-api-token" "$work/runtime/audit-hmac.key"
 
 # The release identity is numeric; prepare bind mounts without broad host chmod.
