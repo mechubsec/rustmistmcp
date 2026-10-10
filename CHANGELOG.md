@@ -22,6 +22,11 @@ visible rather than looking like those versions never existed.
   `/var/lib/rustmistmcp/tokens.json`, and the legacy
   `/etc/rustmistmcp/tokens.json` fallback still applies only to that exact
   path. Stdio still does not require the bearer store.
+  **Upgrade note:** earlier releases did not check `mist.json`'s mode. An
+  install whose profile is group- or world-writable, or world-readable (for
+  example `0644`), now refuses to start. Run `chmod 0640
+  /etc/rustmistmcp/mist.json` (the startup error names the exact file and
+  mode to fix).
 
 ### Added
 
