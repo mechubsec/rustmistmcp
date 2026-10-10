@@ -10,6 +10,24 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
+### Security
+
+- **Startup reports every loose credential-file mode in one pass** (MEC-2233).
+  `mist.json` is checked as a no-secret config (`0640`, so `0600` still
+  passes) because it holds an endpoint, an org allowlist, and a credential
+  path or environment-variable name, not the API token. The credential file
+  named by that profile, `tokens.json`, the audit HMAC key, and the
+  approval-digest key are secrets (`0600`). A missing credential file does
+  not fail a fresh install that has not created one yet. `tokens.json` stays
+  `/var/lib/rustmistmcp/tokens.json`, and the legacy
+  `/etc/rustmistmcp/tokens.json` fallback still applies only to that exact
+  path. Stdio still does not require the bearer store.
+  **Upgrade note:** earlier releases did not check `mist.json`'s mode. An
+  install whose profile is group- or world-writable, or world-readable (for
+  example `0644`), now refuses to start. Run `chmod 0640
+  /etc/rustmistmcp/mist.json` (the startup error names the exact file and
+  mode to fix).
+
 ### Added
 
 - Official MCP Registry metadata: `server.json` for the stdio container
