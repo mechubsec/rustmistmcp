@@ -190,21 +190,24 @@ secret files accessible to numeric UID/GID `65532`:
 install -d -m 0750 packaging/container/runtime
 install -d -m 0700 packaging/container/state
 cp examples/mist.example.json packaging/container/runtime/mist.json
-printf '%s\n' '{"version":1,"tokens":[]}' > packaging/container/runtime/tokens.json
+printf '%s\n' '{"version":1,"tokens":[]}' > packaging/container/state/tokens.json
 install -m 0600 /dev/null packaging/container/runtime/mist-api-token
+chmod 0600 packaging/container/state/tokens.json
+read -sp 'Mist API token: ' token && printf '%s' "$token" > packaging/container/runtime/mist-api-token && unset token
 sudo chown root:65532 packaging/container/runtime/mist.json
 sudo chmod 0640 packaging/container/runtime/mist.json
-sudo chown 65532:65532 packaging/container/runtime/mist-api-token \
-  packaging/container/runtime/tokens.json
+sudo chown 65532:65532 packaging/container/runtime/mist-api-token
 sudo chown -R 65532:65532 packaging/container/state
-chmod 0600 packaging/container/runtime/mist-api-token \
-  packaging/container/runtime/tokens.json
 RUSTMISTMCP_IMAGE='ghcr.io/mechubsec/rustmistmcp@sha256:<verified-64-hex-digest>' \
   docker compose -f packaging/container/compose.example.yaml up
 ```
 
-Populate the two empty secret files without placing their values in an
-environment variable, command argument, image layer, or Compose file.
+Populate the Mist API token before handing ownership to UID/GID `65532`, and
+before `up`: once ownership moves, an unprivileged operator can no longer
+write it, and the credential loader rejects an empty token at startup. Do
+this without placing the value in an environment variable, command argument,
+image layer, or Compose file.
+
 Grant-bearing MCP bearer-token add/list/revoke/rotate is the shared
 `token_cmd::run_with_grant`; the private Mist-typed adapter that once bridged it
 is deleted. New tokens created by `token add` remain grantless; the shared
@@ -242,8 +245,8 @@ operate VMID 612 or snapshot an unrelated guest.
 The archive installer validates its checksum and full archive layout before any
 mutation, refuses to clobber live configuration, secrets, state, or a customized
 unit (unless `RUSTMISTMCP_FORCE_UNIT=1` is set), and does not enable the service.
-Use `install.sh --validate-only ARCHIVE ARCHIVE.sha256` without root for a
-non-mutating preflight.
+Use `packaging/lxc/install.sh --validate-only ARCHIVE ARCHIVE.sha256` without
+root for a non-mutating preflight.
 It installs non-live examples as `/etc/rustmistmcp/mist.example.json` and
 `/etc/rustmistmcp/tokens.example.json`. Configure live files manually:
 
