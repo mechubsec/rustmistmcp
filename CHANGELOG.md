@@ -29,24 +29,9 @@ visible rather than looking like those versions never existed.
   example `0644`), now refuses to start. Run `chmod 0640
   /etc/rustmistmcp/mist.json` (the startup error names the exact file and
   mode to fix).
-- **Redact secret-bearing fields from every Mist tool response** (MEC-709,
-  #137). WLAN PSKs, RADIUS/SNMP shared secrets, gateway-template tunnel PSKs,
-  and API keys returned by Mist now route through mecmcp-redact at every
-  response boundary (reads, and the before/after views in plan/apply),
-  gated so the handful of internal-only reads used for drift checking and
-  pre-write verification can opt out without corrupting their comparisons.
-  A patch containing the literal `[REDACTED]` placeholder is refused before
-  it can be merged into a device write.
-- **Generate the audit HMAC key on startup** (MEC-978, #152), closing a gap
-  where the distroless image referenced `--audit-hmac-key-file` in
-  `ENTRYPOINT` but nothing ever created the file, so a fresh container
-  volume ran with an absent/unkeyed audit log. The key now lives under the
-  writable `/var/lib/rustmistmcp` volume and is generated on first run,
-  matching the other MCP servers.
-- **Consolidated read-target authorization checks** (#157). Removed a
-  circular self-consistency comparison in the paginated-read continuation
-  path; both the direct-call and continuation paths now route through one
-  shared allowlist decision, applied after scope and grant checks.
+- **Redacts secret-bearing fields from Mist tool responses** (MEC-709, #137).
+- **Ensures the audit log is always keyed in container deployments** (MEC-978, #152).
+- **Hardens authorization checks on read paths** (#157).
 
 ### Added
 

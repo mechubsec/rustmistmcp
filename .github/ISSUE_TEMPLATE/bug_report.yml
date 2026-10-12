@@ -12,7 +12,7 @@ body:
     attributes:
       label: Version
       description: rustmistmcp version (or commit SHA) you're using
-      placeholder: "0.3.2"
+      placeholder: "0.4.0"
     validations:
       required: true
   - type: textarea
