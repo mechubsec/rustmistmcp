@@ -426,11 +426,13 @@ fi
 require_regex .github/workflows/release.yml 'actions/upload-artifact@[0-9a-f]{40}'
 require_regex .github/workflows/release.yml 'actions/attest-build-provenance@[0-9a-f]{40}'
 require_regex .github/workflows/release.yml '^permissions: \{\}$'
-# 4 = the verify, image and archive jobs + the shared gitleaks caller job, which
-# must grant contents: read itself because the workflow top level is permissions: {}.
-require_count .github/workflows/release.yml 'contents: read' 4
+# 5 = the verify, image, archive and registry-publish jobs + the shared
+# gitleaks caller job, which must grant contents: read itself because the
+# workflow top level is permissions: {}.
+require_count .github/workflows/release.yml 'contents: read' 5
 require_count .github/workflows/release.yml 'packages: write' 1
-require_count .github/workflows/release.yml 'id-token: write' 1
+# archive (artifact signing) and registry-publish (OIDC login to mcp-publisher).
+require_count .github/workflows/release.yml 'id-token: write' 2
 require_count .github/workflows/release.yml 'attestations: write' 1
 require_contains .github/workflows/release.yml 'cargo +1.89.0 check --workspace --locked'
 require_contains .github/workflows/release.yml 'cargo doc --workspace --no-deps --locked'
