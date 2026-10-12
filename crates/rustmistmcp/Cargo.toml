@@ -28,7 +28,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
-rustmistmcp-core = { version = "0.3.2", path = "../rustmistmcp-core" }
+rustmistmcp-core = { version = "0.4.0", path = "../rustmistmcp-core" }
 mecmcp-audit.workspace = true
 mecmcp-auth.workspace = true
 mecmcp-changeset.workspace = true
@@ -45,7 +45,7 @@ async-trait.workspace = true
 http.workspace = true
 mecmcp-audit = { workspace = true, features = ["test-util"] }
 # Test-only: tests/http_client_wiring.rs uses HttpMistClient::from_test_parts.
-rustmistmcp-core = { version = "0.3.2", path = "../rustmistmcp-core", features = ["test-util"] }
+rustmistmcp-core = { version = "0.4.0", path = "../rustmistmcp-core", features = ["test-util"] }
 # Test-only: runtime_contract.rs and http_client_wiring.rs use
 # mecmcp_transport::test_harness::serve_on_loopback. mecmcp 0.24.0 (#387)
 # moved test_harness and test_client behind this feature and dropped their
