@@ -44,6 +44,8 @@ mecmcp-transport.workspace = true
 async-trait.workspace = true
 http.workspace = true
 mecmcp-audit = { workspace = true, features = ["test-util"] }
+# Test-only: the shared CLI refusal fixtures live behind `test-util`.
+mecmcp-runtime = { workspace = true, features = ["test-util"] }
 # Test-only: tests/http_client_wiring.rs uses HttpMistClient::from_test_parts.
 rustmistmcp-core = { version = "0.4.0", path = "../rustmistmcp-core", features = ["test-util"] }
 # Test-only: runtime_contract.rs and http_client_wiring.rs use
