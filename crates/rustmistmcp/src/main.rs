@@ -22,8 +22,7 @@ async fn main() -> Result<()> {
     let args = MistCli::parse();
 
     // Validate the flattened shared CLI
-    mecmcp_runtime::cli_validate::validate(&args.shared)
-        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    mecmcp_runtime::cli_validate::validate_or_exit(&args.shared);
     let audit_sink = init_audit(&args)?;
 
     if let Some(Command::Token { action }) = args.shared.command {
