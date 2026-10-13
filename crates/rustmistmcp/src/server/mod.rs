@@ -2724,6 +2724,7 @@ impl MistHandler {
             args.org_id.clone(),
             before.clone(),
             after.clone(),
+            change_set::owner_subject(caller),
         )
         .await
         {
@@ -2950,16 +2951,12 @@ impl MistHandler {
         extensions: rmcp::model::Extensions,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let caller = caller_from_extensions::<MistGrant>(&extensions);
-        let approver = match caller {
-            Some(ctx) => ctx.token_name.clone(),
-            None => "stdio".to_owned(),
-        };
         // Truthful, not permissive: a stdio caller carries no verified token
         // entry, so its actor type is unknown rather than assumed human. mecmcp's
         // `approve_change_set` refuses anything but `Human` (mecmcp#390, the
         // house rule that a human approves), which is exactly the outcome an
         // unattributed caller should get.
-        let approver_actor_type = change_set::actor_type(caller);
+        let approver_identity = change_set::approver_identity(caller);
         let mut audit = audit_scope(
             caller,
             "approve_mist_change_set",
@@ -2984,9 +2981,8 @@ impl MistHandler {
             .approve_change_set(
                 args.change_set_id.clone(),
                 device,
-                approver.clone(),
+                &approver_identity,
                 args.plan_digest.clone(),
-                approver_actor_type,
             )
             .await
         {
@@ -3865,6 +3861,8 @@ mod tests {
             client_name: None,
             model_id: None,
             session_id: None,
+            oidc_subject: None,
+            verified_approver: None,
         }
     }
 
@@ -3891,6 +3889,8 @@ mod tests {
             client_name: None,
             model_id: None,
             session_id: None,
+            oidc_subject: None,
+            verified_approver: None,
         }
     }
 
@@ -3948,6 +3948,8 @@ mod tests {
             client_name: None,
             model_id: None,
             session_id: None,
+            oidc_subject: None,
+            verified_approver: None,
         };
 
         let result = handler
@@ -4309,6 +4311,8 @@ mod tests {
             client_name: None,
             model_id: None,
             session_id: None,
+            oidc_subject: None,
+            verified_approver: None,
         };
         let result = handler
             .dispatch_catalogued_read(
@@ -4426,6 +4430,8 @@ mod tests {
             client_name: None,
             model_id: None,
             session_id: None,
+            oidc_subject: None,
+            verified_approver: None,
         };
         let visible = filter_tools_for_scope(
             handler.tool_router.list_all(),
@@ -4468,6 +4474,8 @@ mod tests {
             client_name: None,
             model_id: None,
             session_id: None,
+            oidc_subject: None,
+            verified_approver: None,
         };
 
         let result = handler
@@ -4520,6 +4528,8 @@ mod tests {
             client_name: None,
             model_id: None,
             session_id: None,
+            oidc_subject: None,
+            verified_approver: None,
         };
 
         let result = handler
@@ -4978,6 +4988,8 @@ mod tests {
             client_name: None,
             model_id: None,
             session_id: None,
+            oidc_subject: None,
+            verified_approver: None,
         }
     }
 
@@ -5501,6 +5513,7 @@ mod tests {
                 "sha256:0000000000000000000000000000000000000000000000000000000000000000"
                     .to_string(),
                 "policy-sig".to_string(),
+                None,
             )
             .await
             .expect("create");
@@ -5508,9 +5521,11 @@ mod tests {
             .approve_change_set(
                 created.change_set_id.clone(),
                 "site/device-a".to_string(),
-                "bob".to_string(),
+                &mecmcp_changeset::ApproverIdentity::TokenAsserted {
+                    principal: "bob".to_string(),
+                    actor_type: mecmcp_audit::ActorType::Human,
+                },
                 created.digest.clone(),
-                mecmcp_audit::ActorType::Human,
             )
             .await
             .expect("approve");
@@ -5526,7 +5541,7 @@ mod tests {
             .as_ref()
             .expect("approval");
         assert_eq!(
-            approval.digest_version, 6,
+            approval.digest_version, 7,
             "a key passed through load_coordinator must actually take effect and produce \
              the stronger, keyed digest -- otherwise configuring it does nothing"
         );

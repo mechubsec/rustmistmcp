@@ -58,6 +58,7 @@ fn add_grant_bearing_token(path: &Path, name: &str, grant: MistGrant) {
         None,
         None,
         None,
+        None,
         &known,
     )
     .expect("grant-bearing token");
