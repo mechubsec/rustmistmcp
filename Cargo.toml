@@ -53,17 +53,17 @@ zeroize = "1"
 # mecmcp#91 (target-neutral auth scope vocabulary) is the remaining open
 # prerequisite; it is why the shared CLI still spells the profile flag
 # `--device-mapping`.
-mecmcp-audit = { version = "0.26.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.26.0" }
-mecmcp-auth = { version = "0.26.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.26.0" }
-mecmcp-changeset = { version = "0.26.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.26.0" }
-mecmcp-http = { version = "0.26.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.26.0", features = ["absolute-url"] }
-mecmcp-inventory = { version = "0.26.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.26.0" }
-mecmcp-job = { version = "0.26.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.26.0" }
-mecmcp-redact = { version = "0.26.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.26.0" }
-mecmcp-runtime = { version = "0.26.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.26.0" }
-mecmcp-secret = { version = "0.26.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.26.0" }
-mecmcp-server = { version = "0.26.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.26.0" }
-mecmcp-transport = { version = "0.26.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.26.0" }
+mecmcp-audit = { version = "0.27.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.27.0" }
+mecmcp-auth = { version = "0.27.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.27.0" }
+mecmcp-changeset = { version = "0.27.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.27.0" }
+mecmcp-http = { version = "0.27.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.27.0", features = ["absolute-url"] }
+mecmcp-inventory = { version = "0.27.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.27.0" }
+mecmcp-job = { version = "0.27.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.27.0" }
+mecmcp-redact = { version = "0.27.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.27.0" }
+mecmcp-runtime = { version = "0.27.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.27.0" }
+mecmcp-secret = { version = "0.27.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.27.0" }
+mecmcp-server = { version = "0.27.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.27.0" }
+mecmcp-transport = { version = "0.27.0", git = "https://github.com/mechubsec/mecmcp", tag = "v0.27.0" }
 
 [profile.release]
 lto = "thin"

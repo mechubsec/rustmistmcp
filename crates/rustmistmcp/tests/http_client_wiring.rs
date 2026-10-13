@@ -103,6 +103,7 @@ async fn tool_call_reaches_http_client_and_sends_correct_auth_header() {
         None,
         None,
         None,
+        None,
         &known,
     )
     .expect("add token");
