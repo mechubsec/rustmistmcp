@@ -194,6 +194,11 @@ printf '%s\n' '{"version":1,"tokens":[]}' > packaging/container/state/tokens.jso
 install -m 0600 /dev/null packaging/container/runtime/mist-api-token
 chmod 0600 packaging/container/state/tokens.json
 read -sp 'Mist API token: ' token && printf '%s' "$token" > packaging/container/runtime/mist-api-token && unset token
+# Mint a bearer token into the state mount before first start; the secret
+# prints once, so store it in the client that will call this server.
+rustmistmcp token add --tokens-file packaging/container/state/tokens.json \
+  --name my-client --devices '*' --tools '*' \
+  -f packaging/container/runtime/mist.json
 sudo chown root:65532 packaging/container/runtime/mist.json
 sudo chmod 0640 packaging/container/runtime/mist.json
 sudo chown 65532:65532 packaging/container/runtime/mist-api-token
