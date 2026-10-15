@@ -1,6 +1,6 @@
 # Match the toolchain the rest of the mechub Rust MCP family builds with.
 # MSRV is declared separately in Cargo.toml; this is the build toolchain.
 [toolchain]
-channel    = "1.98.1"
+channel    = "1.99.0"
 profile    = "minimal"
 components = ["rustfmt", "clippy"]
