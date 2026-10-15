@@ -29,7 +29,7 @@ cargo doc --workspace --no-deps --locked
 cargo build --release --locked --bin rustmistmcp
 ```
 
-MSRV check (the workspace declares `rust-version = "1.89"` in `Cargo.toml`; `rust-toolchain.toml` pins the build toolchain to `1.98.1` with the `rustfmt` and `clippy` components):
+MSRV check (the workspace declares `rust-version = "1.89"` in `Cargo.toml`; `rust-toolchain.toml` pins the build toolchain to `1.99.0` with the `rustfmt` and `clippy` components):
 
 ```sh
 rustup toolchain install 1.89.0 --profile minimal
