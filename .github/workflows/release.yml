@@ -131,7 +131,7 @@ jobs:
           sbom: true
       - name: Record immutable image digest
         run: printf '%s@%s\n' 'ghcr.io/${{ github.repository }}' '${{ steps.push.outputs.digest }}' | tee image-digest.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: immutable-image-digest
           path: image-digest.txt
@@ -203,7 +203,7 @@ jobs:
             dist/*.tar.gz
             dist/*.sha256
             dist/*.cdx.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: rustmistmcp-archive
           path: dist/
@@ -229,7 +229,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: mechubsec/mecmcp/.github/workflows/reusable-registry-publish.yml@b1ca7b0a24cf7e7179e46b94a86e97ac8ebc23ba # v0.28.0
+    uses: mechubsec/mecmcp/.github/workflows/reusable-registry-publish.yml@db9e2ea9d1a1ed7e7a962a236e579ad62bb24435 # v0.28.1
     with:
       version: ${{ needs.tag-version.outputs.version }}
       oci-image: ghcr.io/${{ github.repository }}:${{ needs.tag-version.outputs.version }}
