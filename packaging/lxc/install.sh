@@ -97,6 +97,31 @@ require_safe_live_secret() {
         die "existing live secret path must be a regular file: $path"
 }
 
+service_user=rustmistmcp
+
+# Place a freshly generated secret file. The content is built in a private temp
+# file and moved into place with install(1), which replaces rather than follows
+# anything already at the destination.
+install_new_secret() {
+    local dest=$1 content=$2 tmp
+    require_safe_live_secret "$dest"
+    tmp=$(mktemp)
+    printf '%s\n' "$content" > "$tmp"
+    install -m 0600 -o "$service_user" -g "$service_user" "$tmp" "$dest"
+    rm -f "$tmp"
+}
+
+# Re-guard immediately before changing ownership and mode of an existing file in
+# a directory the service account can write to.
+secure_existing_secret() {
+    local path=$1
+    [[ -e $path || -L $path ]] || return 0
+    require_safe_live_secret "$path"
+    chown -h "$service_user:$service_user" -- "$path"
+    require_safe_live_secret "$path"
+    chmod 0600 -- "$path"
+}
+
 usage() {
     printf '%s\n' \
         'usage: install.sh [--validate-only] /path/to/rustmistmcp-v<VERSION>-<TARGET>.tar.gz /path/to/archive.sha256' >&2
@@ -284,7 +309,7 @@ require_safe_live_secret /etc/rustmistmcp/mist-api-token
 #
 # The file is never copied automatically — that would leave a duplicate secret
 # behind, which is what the stale-secret scan exists to flag.
-if [[ ! -e /var/lib/rustmistmcp/tokens.json ]]; then
+if [[ ! -e /var/lib/rustmistmcp/tokens.json && ! -L /var/lib/rustmistmcp/tokens.json ]]; then
     if [[ -e /etc/rustmistmcp/tokens.json ]]; then
         printf '%s\n' '>> Not creating /var/lib/rustmistmcp/tokens.json: a token store already'
         printf '%s\n' '>> exists at /etc/rustmistmcp/tokens.json. The server reads it via the'
@@ -293,32 +318,14 @@ if [[ ! -e /var/lib/rustmistmcp/tokens.json ]]; then
         printf '%s\n' '>>     /etc/rustmistmcp/tokens.json /var/lib/rustmistmcp/tokens.json'
         printf '%s\n' '>>   rm /etc/rustmistmcp/tokens.json'
     else
-        install -m 0600 -o rustmistmcp -g rustmistmcp /dev/null /var/lib/rustmistmcp/tokens.json
-        printf '%s\n' '{"version":1,"tokens":[]}' > /var/lib/rustmistmcp/tokens.json
+        install_new_secret /var/lib/rustmistmcp/tokens.json '{"version":1,"tokens":[]}'
     fi
 fi
 
-# Re-check immediately before changing ownership and mode, not only at the top of
-# the script. /var/lib/rustmistmcp is owned and writable by the service account, so
-# a compromised or adversarial service process could replace tokens.json with a
-# symlink between the earlier check and here — and root's chown/chmod would follow
-# it to an arbitrary file. `chown -h` acts on the link rather than its target, and
-# chmod has no such option, so a symlink is refused outright.
-if [[ -e /var/lib/rustmistmcp/tokens.json ]]; then
-    require_safe_live_secret /var/lib/rustmistmcp/tokens.json
-    chown -h rustmistmcp:rustmistmcp -- /var/lib/rustmistmcp/tokens.json
-    [[ ! -L /var/lib/rustmistmcp/tokens.json ]] ||
-        die "tokens.json became a symlink during install: refusing to chmod"
-    chmod 0600 -- /var/lib/rustmistmcp/tokens.json
-fi
-if [[ -e /etc/rustmistmcp/audit-hmac.key ]]; then
-    chown rustmistmcp:rustmistmcp -- /etc/rustmistmcp/audit-hmac.key
-    chmod 0600 -- /etc/rustmistmcp/audit-hmac.key
-fi
-if [[ -e /etc/rustmistmcp/mist-api-token ]]; then
-    chown rustmistmcp:rustmistmcp -- /etc/rustmistmcp/mist-api-token
-    chmod 0600 -- /etc/rustmistmcp/mist-api-token
-fi
+# Existing secrets are re-guarded right before ownership and mode changes.
+secure_existing_secret /var/lib/rustmistmcp/tokens.json
+secure_existing_secret /etc/rustmistmcp/audit-hmac.key
+secure_existing_secret /etc/rustmistmcp/mist-api-token
 
 systemctl daemon-reload
 systemctl restart systemd-journald
