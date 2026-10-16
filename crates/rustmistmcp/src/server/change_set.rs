@@ -31,6 +31,33 @@ pub(crate) fn actor_type(
     }
 }
 
+/// The approver's identity for `approve_change_set`. No verified-approver
+/// assertion path is wired into this server, so it is always token-asserted;
+/// strict mode cannot be satisfied.
+pub(crate) fn approver_identity(
+    caller: Option<&mecmcp_auth::CallerCtx<MistGrant>>,
+) -> mecmcp_changeset::ApproverIdentity {
+    mecmcp_changeset::ApproverIdentity::TokenAsserted {
+        principal: caller
+            .map(|ctx| ctx.token_name.clone())
+            .unwrap_or_else(|| "stdio".to_owned()),
+        actor_type: actor_type(caller),
+    }
+}
+
+/// The caller token's bound IdP identity, recorded on the change set so the
+/// coordinator can refuse the same human approving their own plan.
+pub(crate) fn owner_subject(
+    caller: Option<&mecmcp_auth::CallerCtx<MistGrant>>,
+) -> Option<mecmcp_changeset::OwnerSubject> {
+    caller
+        .and_then(|ctx| ctx.oidc_subject.as_ref())
+        .map(|s| mecmcp_changeset::OwnerSubject {
+            issuer: s.issuer.clone(),
+            subject: s.subject.clone(),
+        })
+}
+
 /// Format an object as a change-set `device` key.
 ///
 /// `ChangeSetRecord.device` is what `device_guard` locks on, so it is the
@@ -107,6 +134,7 @@ pub(crate) struct StagedPlan {
 /// # Errors
 ///
 /// Returns an error if the coordinator rejects the record.
+#[allow(clippy::too_many_arguments)] // one call site; each argument is a distinct plan input
 pub(crate) async fn stage_plan(
     coordinator: &Arc<mecmcp_changeset::ChangesetCoordinator>,
     owner: String,
@@ -115,6 +143,7 @@ pub(crate) async fn stage_plan(
     org_id: String,
     before: serde_json::Value,
     after: serde_json::Value,
+    owner_subject: Option<mecmcp_changeset::OwnerSubject>,
 ) -> Result<StagedPlan, CoordinatorError> {
     // Compute fingerprint over the before state.
     let fingerprint = if before.is_null() {
@@ -178,6 +207,7 @@ pub(crate) async fn stage_plan(
     let record = ChangeSetRecord {
         id: change_set_id.clone(),
         owner: owner.clone(),
+        owner_subject,
         device: device.clone(),
         expected_candidate_fingerprint: fingerprint.clone(),
         actions: vec![action],

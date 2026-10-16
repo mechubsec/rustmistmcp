@@ -51,8 +51,8 @@ is honored:
 
 ```bash
 # Obtain the digest for the version you want:
-#   docker pull ghcr.io/mechubsec/rustmistmcp:0.3.2
-#   docker inspect ghcr.io/mechubsec/rustmistmcp:0.3.2 --format='{{index .RepoDigests 0}}'
+#   docker pull ghcr.io/mechubsec/rustmistmcp:0.4.0
+#   docker inspect ghcr.io/mechubsec/rustmistmcp:0.4.0 --format='{{index .RepoDigests 0}}'
 # Then extract the binary directly to the target path:
 cd /path/to/rustmistmcp
 target_path=${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release
@@ -72,7 +72,7 @@ Forward-incompatible means the 2.44-linked binary will not load against 2.41.
 
 ```bash
 RUSTMISTMCP_SKIP_BUILD=1 scripts/build-release.sh
-# >> Wrote dist/rustmistmcp-v0.3.2-x86_64-unknown-linux-gnu.tar.gz
+# >> Wrote dist/rustmistmcp-v0.4.0-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 `RUSTMISTMCP_SKIP_BUILD=1` tells the packager to use the existing binary instead
@@ -137,16 +137,16 @@ validates against the release naming contract). **Verify the archive checksum
 BEFORE extracting** to ensure arbitrary archive code never executes:
 
 ```bash
-pct push 618 dist/rustmistmcp-v0.3.2-x86_64-unknown-linux-gnu.tar.gz /tmp/rustmistmcp-v0.3.2-x86_64-unknown-linux-gnu.tar.gz
-pct push 618 dist/rustmistmcp-v0.3.2-x86_64-unknown-linux-gnu.tar.gz.sha256 /tmp/rustmistmcp-v0.3.2-x86_64-unknown-linux-gnu.tar.gz.sha256
+pct push 618 dist/rustmistmcp-v0.4.0-x86_64-unknown-linux-gnu.tar.gz /tmp/rustmistmcp-v0.4.0-x86_64-unknown-linux-gnu.tar.gz
+pct push 618 dist/rustmistmcp-v0.4.0-x86_64-unknown-linux-gnu.tar.gz.sha256 /tmp/rustmistmcp-v0.4.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 
 pct exec 618 -- bash -lc '
   cd /tmp
   # Verify checksum BEFORE extracting anything
-  sha256sum -c rustmistmcp-v0.3.2-x86_64-unknown-linux-gnu.tar.gz.sha256 || exit 1
-  tar xzf rustmistmcp-v0.3.2-x86_64-unknown-linux-gnu.tar.gz
+  sha256sum -c rustmistmcp-v0.4.0-x86_64-unknown-linux-gnu.tar.gz.sha256 || exit 1
+  tar xzf rustmistmcp-v0.4.0-x86_64-unknown-linux-gnu.tar.gz
   cd rustmistmcp-*/
-  RUSTMISTMCP_LXC_HOST_PROOF=unprivileged=1,nesting=1 bash ./packaging/lxc/install.sh /tmp/rustmistmcp-v0.3.2-x86_64-unknown-linux-gnu.tar.gz /tmp/rustmistmcp-v0.3.2-x86_64-unknown-linux-gnu.tar.gz.sha256
+  RUSTMISTMCP_LXC_HOST_PROOF=unprivileged=1,nesting=1 bash ./packaging/lxc/install.sh /tmp/rustmistmcp-v0.4.0-x86_64-unknown-linux-gnu.tar.gz /tmp/rustmistmcp-v0.4.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 '
 ```
 

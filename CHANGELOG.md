@@ -10,34 +10,84 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
-### Changed
+## [0.4.0] - 2026-10-12
 
-- **Re-pinned the `mecmcp-*` crates from `v0.25.0` to `v0.26.0`** (MEC-1236).
-  Brings in mecmcp's `Profile` extension hooks for vendor-specific redaction
-  rules and a fix for a reachable panic in `mecmcp-redact`'s text redaction
-  path. No behavior change in this server; this crate's existing
-  denylist-driven redaction coverage already subsumed the local
-  Mist-specific rules removed in #147.
+### Security
+
+- **Startup reports every loose credential-file mode in one pass** (MEC-2233,
+  #168). `mist.json` is checked as a no-secret config (`0640`, so `0600` still
+  passes) because it holds an endpoint, an org allowlist, and a credential
+  path or environment-variable name, not the API token. The credential file
+  named by that profile, `tokens.json`, the audit HMAC key, and the
+  approval-digest key are secrets (`0600`). A missing credential file does
+  not fail a fresh install that has not created one yet. `tokens.json` stays
+  `/var/lib/rustmistmcp/tokens.json`, and the legacy
+  `/etc/rustmistmcp/tokens.json` fallback still applies only to that exact
+  path. Stdio still does not require the bearer store.
+  **Upgrade note:** earlier releases did not check `mist.json`'s mode. An
+  install whose profile is group- or world-writable, or world-readable (for
+  example `0644`), now refuses to start. Run `chmod 0640
+  /etc/rustmistmcp/mist.json` (the startup error names the exact file and
+  mode to fix).
+- **Redacts secret-bearing fields from Mist tool responses** (MEC-709, #137).
+- **Ensures the audit log is always keyed in container deployments** (MEC-978, #152).
+- **Hardens authorization checks on read paths** (#157).
 
 ### Added
 
+- **First Docker Hub image: `docker.io/mechub/rustmistmcp`** (#169). Release
+  builds now dual-push to GHCR and Docker Hub from the same digest
+  (`linux/amd64`); a missing or unscoped `DOCKERHUB_USERNAME`/
+  `DOCKERHUB_TOKEN` skips the Docker Hub push with a warning instead of
+  failing the release.
+- Official MCP Registry metadata: `server.json` for the stdio container
+  invocation, and the `io.modelcontextprotocol.server.name` image label.
 - **Threat model and token-role guidance docs** (#120). `docs/THREAT_MODEL.md`
   documents trust boundaries, security principals, and the blast radius of a
   compromised MCP token, compromised Mist API token, or compromised agent
   against a real Mist org, plus mitigations in place vs. planned.
   `docs/TOKEN_ROLE_GUIDANCE.md` recommends a dedicated, least-privilege Mist
   organization API token over a personal or super-admin token.
+- **Optional environment-variable credential source** (#159), alongside the
+  existing file-based source, for the Mist API token. Stdio startup never
+  touches the bearer-token store or requires either credential source.
+- **Per-token Mist API rate-limit budget with a human reserve** (#126).
+  Mist enforces 5,000 calls/hour per token, shared by agent loops and human
+  operators; a tracked budget charges every call before it reaches the
+  network, retries `429`s honoring `Retry-After` with a bounded exponential
+  backoff, and reserves headroom only a verified-human caller can draw from.
+  Tool output surfaces `budget_remaining`.
+- **Org-scope and count coverage for alarm search, plus
+  `list_mist_alarm_definitions`** (#129). `search_mist_alarms` gains the
+  `org_id`/`site_id` mutually-exclusive scope and records/count mode already
+  used elsewhere; `list_mist_alarm_definitions` exposes the scope-free
+  constant alarm catalog.
 
 ### Changed
 
-- **Re-pinned the `mecmcp-*` crates from `v0.23.0` to `v0.24.1`** (MEC-408,
-  closes #116). Brings in mecmcp#383 (the human-approver gate:
-  `ChangesetCoordinator::approve_change_set` now takes an
-  `approver_actor_type: mecmcp_audit::ActorType` and refuses anything but
-  `Human`) and mecmcp#395 (`LimitsConfig::default()` now rate-limits by
-  default). `mecmcp-transport`'s `test_harness`/`test_client` moved behind a
-  `test-util` feature (mecmcp#387); this server's dev-dependency now enables
-  it.
+- The container image is published for `linux/amd64` only; the `linux/arm64`
+  build and its QEMU setup are dropped.
+- **Release tarball and checksum are now uploaded to the GitHub release and
+  cosign-signed** (MEC-2158). The CI-built, attested LXC-style release
+  archive previously only reached a CI artifact; a new workflow triggered on
+  release publication now attaches `*.tar.gz`/`*.sha256` to the release and
+  signs the tarball via mecmcp's shared keyless-cosign workflow, matching
+  rustjunosmcp's release process.
+- **Archive SBOM switched from SPDX to CycloneDX** (MEC-2158), generated via
+  `cargo-cyclonedx` instead of `anchore/sbom-action`, for consistency with
+  the org-wide SBOM standard (mecmcp's `docs/RELEASE-WORKFLOWS.md`) used by
+  every other repo's SBOM job. The SBOM is not yet attached to the GitHub
+  release itself; that is blocked on a shared mecmcp workflow landing and
+  will follow in a separate change.
+- **Re-pinned the `mecmcp-*` crates from `v0.23.0` to `v0.24.1`, then to
+  `v0.25.0`, then to `v0.26.0`** (MEC-408, MEC-1236, closes #116). Brings in
+  mecmcp's human-approver gate (`ChangesetCoordinator::approve_change_set`
+  now takes an `approver_actor_type: mecmcp_audit::ActorType` and refuses
+  anything but `Human`), `LimitsConfig::default()` rate-limiting by default,
+  `Profile` extension hooks for vendor-specific redaction rules, and a fix
+  for a reachable panic in `mecmcp-redact`'s text redaction path. This
+  crate's existing denylist-driven redaction coverage already subsumed the
+  local Mist-specific rules removed in #147.
 - **`approve_mist_change_set` now routes through mecmcp's
   `ChangesetCoordinator::approve_change_set`** instead of writing approval
   state itself. A change set cannot commit until a human-actor-type approver
@@ -59,6 +109,27 @@ visible rather than looking like those versions never existed.
   guidance called this server read-only after the batch-1 WAN edge
   change-set write lifecycle had already landed. Both now describe the
   plan → approve → apply mutation path.
+- **Site-scoped tools (`get_mist_site`, `list_mist_rogues`, and others) no
+  longer fail in production** (#123). Startup discovers each allowlisted
+  org's sites via `listOrgSites` instead of handing the handler an empty
+  site map, and refreshes on a background interval
+  (`--site-refresh-interval-secs`, default 300s) so added or removed sites
+  are picked up without a restart.
+- **Pagination cursors now advance instead of re-fetching the first page**
+  (#122). `build_url` previously ignored a stored cursor's value entirely.
+  Both pagination modes Mist uses (`page`/`limit` headers and
+  `search_after`) now derive and apply the next cursor correctly, and
+  `page`/`limit`/`total` are surfaced to the tool caller.
+- **`search_mist_operations` no longer requires execution scope to find an
+  operation** (#125). It filtered results through the same
+  caller-execution-scope check `get_mist_operation_schema` had already
+  dropped in #98, so a token scoped only to search could not discover
+  operations it had no separate grant to invoke. Authorization at the point
+  of actually invoking an operation is unchanged.
+- **Audit log now reopens on `SIGHUP`** (MEC-779, #140), and a rename-mode
+  `logrotate` fragment is shipped for it. Previously nothing retained the
+  `AuditFileSink` returned at startup, so no signal could make the server
+  pick up a rotated audit file.
 
 ## [0.3.2] - 2026-09-24
 

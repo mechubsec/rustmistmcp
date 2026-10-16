@@ -52,7 +52,7 @@ jobs:
           cargo deny check
       - name: Validate YAML and compose
         run: |
-          for file in .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/security.yml .github/dependabot.yml packaging/container/compose.example.yaml; do
+          for file in .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/release-sign-tarball.yml .github/workflows/security.yml .github/dependabot.yml packaging/container/compose.example.yaml; do
             npm exec --yes --package=yaml@2.8.1 yaml -- valid "$file"
           done
           RUSTMISTMCP_IMAGE=ghcr.io/mechubsec/rustmistmcp@sha256:0000000000000000000000000000000000000000000000000000000000000000 docker compose -f packaging/container/compose.example.yaml config
@@ -81,24 +81,47 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      # Absent secrets skip Docker Hub and still push GHCR. A failed Docker
+      # Hub login would fail this job, because both registries are pushed
+      # by the single build-push step below.
+      - name: Check Docker Hub credentials
+        id: dockerhub
+        env:
+          DH_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DH_USERNAME}" ] || [ -z "${DH_TOKEN}" ]; then
+            echo "::warning::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN are missing; skipping the Docker Hub push."
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: steps.dockerhub.outputs.push == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: |
+            ghcr.io/${{ github.repository }}
+            ${{ steps.dockerhub.outputs.push == 'true' && 'docker.io/mechub/rustmistmcp' || '' }}
           tags: type=semver,pattern={{version}}
       - id: push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -108,7 +131,7 @@ jobs:
           sbom: true
       - name: Record immutable image digest
         run: printf '%s@%s\n' 'ghcr.io/${{ github.repository }}' '${{ steps.push.outputs.digest }}' | tee image-digest.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: immutable-image-digest
           path: image-digest.txt
@@ -143,26 +166,70 @@ jobs:
             -v "$PWD:/workspace:ro" \
             -v "$PWD/dist:/output" \
             -w /workspace \
-            rust:1.98.1-slim-bookworm@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730 \
+            rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa \
             scripts/build-release.sh
       - name: Verify checksum, extraction, executable, hash, and glibc floor
         run: |
           archive=$(find dist -name '*.tar.gz' -print -quit)
           scripts/smoke-release-archive.sh "$archive" "$archive.sha256"
-      - name: Generate archive SBOM
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
-        with:
-          path: dist
-          format: spdx-json
-          output-file: dist/rustmistmcp-archive.spdx.json
+      - name: Generate archive SBOM (CycloneDX)
+        # cargo-cyclonedx, not anchore/sbom-action: the org standard
+        # (mecmcp's docs/RELEASE-WORKFLOWS.md, mecmcp's own security.yml,
+        # rustjunosmcp's release-sbom.yml) is CycloneDX via cargo-cyclonedx,
+        # not SPDX. Version pin matches mecmcp's security.yml sbom job.
+        run: |
+          set -euo pipefail
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo cyclonedx --format json --manifest-path crates/rustmistmcp/Cargo.toml
+          cp crates/rustmistmcp/rustmistmcp.cdx.json dist/rustmistmcp-archive.cdx.json
+      - name: Validate SBOM shape
+        run: |
+          set -euo pipefail
+          sbom=dist/rustmistmcp-archive.cdx.json
+          format=$(jq -r '.bomFormat' "$sbom")
+          [[ "$format" == "CycloneDX" ]] || {
+            echo "$sbom: bomFormat is '$format', not CycloneDX" >&2
+            exit 1
+          }
+          component_count=$(jq '.components | length' "$sbom")
+          [[ "$component_count" -gt 0 ]] || {
+            echo "$sbom: components array is empty" >&2
+            exit 1
+          }
       - name: Attest archive provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: |
             dist/*.tar.gz
             dist/*.sha256
-            dist/*.spdx.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+            dist/*.cdx.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: rustmistmcp-archive
           path: dist/
+
+  tag-version:
+    name: Resolve tag version
+    # -rc tags are pre-releases (scripts/test-release-policy.sh), so this
+    # job (and the registry-publish job below) only runs for a real
+    # release tag -- the MCP Registry has no story for pre-release entries.
+    if: "!contains(github.ref_name, '-rc')"
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Strip leading v from the pushed tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+  registry-publish:
+    name: Publish to MCP Registry
+    if: "!contains(github.ref_name, '-rc')"
+    needs: [image, tag-version]
+    permissions:
+      contents: read
+      id-token: write
+    uses: mechubsec/mecmcp/.github/workflows/reusable-registry-publish.yml@db9e2ea9d1a1ed7e7a962a236e579ad62bb24435 # v0.28.1
+    with:
+      version: ${{ needs.tag-version.outputs.version }}
+      oci-image: ghcr.io/${{ github.repository }}:${{ needs.tag-version.outputs.version }}

@@ -19,7 +19,7 @@ cleanup() {
     docker run --rm --network none \
         --entrypoint /bin/chown \
         -v "$work:/fixture" \
-        rust:1.98.1-slim-bookworm@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730 \
+        rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa \
         -R "$(id -u):$(id -g)" /fixture/runtime /fixture/state >/dev/null 2>&1 || true
     rm -rf "$work"
 }
@@ -30,13 +30,14 @@ cp examples/mist.example.json "$work/runtime/mist.json"
 printf '%s\n' '{"version":1,"tokens":[]}' > "$work/runtime/tokens.json"
 printf '%s\n' 'packaging-smoke-mist-token' > "$work/runtime/mist-api-token"
 printf '%s\n' '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' > "$work/runtime/audit-hmac.key"
+chmod 0640 "$work/runtime/mist.json"
 chmod 0600 "$work/runtime/tokens.json" "$work/runtime/mist-api-token" "$work/runtime/audit-hmac.key"
 
 # The release identity is numeric; prepare bind mounts without broad host chmod.
 docker run --rm --network none \
     --entrypoint /bin/chown \
     -v "$work:/fixture" \
-    rust:1.98.1-slim-bookworm@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730 \
+    rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa \
     -R 65532:65532 /fixture/runtime /fixture/state
 
 docker run -d --name "$name" \

@@ -211,8 +211,12 @@ RUSTMISTMCP_IMAGE='ghcr.io/mechubsec/rustmistmcp@sha256:<verified-64-hex-digest>
   docker compose -f packaging/container/compose.example.yaml up
 ```
 
-Do not place either secret in an environment variable, command argument, image
-layer, or Compose file.
+Populate the Mist API token before handing ownership to UID/GID `65532`, and
+before `up`: once ownership moves, an unprivileged operator can no longer
+write it, and the credential loader rejects an empty token at startup. Do
+this without placing the value in an environment variable, command argument,
+image layer, or Compose file.
+
 Grant-bearing MCP bearer-token add/list/revoke/rotate is the shared
 `token_cmd::run_with_grant`; the private Mist-typed adapter that once bridged it
 is deleted. New tokens created by `token add` remain grantless; the shared
@@ -250,8 +254,8 @@ operate VMID 612 or snapshot an unrelated guest.
 The archive installer validates its checksum and full archive layout before any
 mutation, refuses to clobber live configuration, secrets, state, or a customized
 unit (unless `RUSTMISTMCP_FORCE_UNIT=1` is set), and does not enable the service.
-Use `install.sh --validate-only ARCHIVE ARCHIVE.sha256` without root for a
-non-mutating preflight.
+Use `packaging/lxc/install.sh --validate-only ARCHIVE ARCHIVE.sha256` without
+root for a non-mutating preflight.
 It installs non-live examples as `/etc/rustmistmcp/mist.example.json` and
 `/etc/rustmistmcp/tokens.example.json`. Configure live files manually:
 
@@ -282,7 +286,7 @@ For each release candidate, build from a clean tree with
 objdump -T bin/rustmistmcp | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -Vu | tail -1
 ```
 
-Release CI produces checksums, an SBOM, provenance, multi-architecture OCI
+Release CI produces checksums, an SBOM, provenance, `linux/amd64` OCI
 images, and an immutable digest record. Refresh the upstream reference/spec once
 at RC, regenerate the catalog, review the delta, and require zero parity gaps
 before any separate deployment acceptance.

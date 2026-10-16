@@ -103,6 +103,7 @@ async fn tool_call_reaches_http_client_and_sends_correct_auth_header() {
         None,
         None,
         None,
+        None,
         &known,
     )
     .expect("add token");
@@ -399,7 +400,8 @@ async fn from_config_constructs_a_real_client_not_the_blocked_stub() {
     let config = MistConfig {
         version: 1,
         endpoint: "https://api.mist.com".to_owned(),
-        credential_file,
+        credential_env: None,
+        credential_file: Some(credential_file),
         allowed_orgs: vec!["11111111-1111-1111-1111-111111111111".to_owned()],
     };
 

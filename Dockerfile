@@ -1,5 +1,5 @@
 # The builder digest is an OCI index supporting the release architectures.
-FROM rust:1.98.1-slim-bookworm@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730 AS builder
+FROM rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS builder
 WORKDIR /workspace
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
@@ -7,7 +7,7 @@ COPY docs/mist-api/catalog.json ./docs/mist-api/catalog.json
 RUN cargo build --release --locked --bin rustmistmcp
 
 # This distroless Debian 13 image supplies the required CA trust store.
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:54df941ed0d06a1bd95ef5e0ce391fd8d9f94b64782dc9a60062727849ee3f97
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:e792ab3d241a468a4fd7519ddbbebe66b49b5f365771716ea688ad40b6c6f1c2
 ARG VERSION=0.0.0-pre-release
 ARG REVISION=unknown
 ARG CREATED=unknown
@@ -18,6 +18,8 @@ LABEL org.opencontainers.image.title="rustmistmcp" \
       org.opencontainers.image.created="$CREATED" \
       org.opencontainers.image.source="https://github.com/mechubsec/rustmistmcp" \
       org.opencontainers.image.licenses="MIT"
+# Official MCP Registry ownership check: must equal server.json "name".
+LABEL io.modelcontextprotocol.server.name="io.github.mechubsec/rustmistmcp"
 COPY --from=builder /workspace/target/release/rustmistmcp /usr/local/bin/rustmistmcp
 USER 65532:65532
 EXPOSE 30030
