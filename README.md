@@ -207,6 +207,7 @@ sudo chown root:65532 packaging/container/runtime/mist.json
 sudo chown 65532:65532 packaging/container/runtime/mist-api-token \
   packaging/container/state/tokens.json
 sudo chown -R 65532:65532 packaging/container/state
+sudo chown root:65532 packaging/container/runtime
 RUSTMISTMCP_IMAGE='ghcr.io/mechubsec/rustmistmcp@sha256:<verified-64-hex-digest>' \
   docker compose -f packaging/container/compose.example.yaml up
 ```
