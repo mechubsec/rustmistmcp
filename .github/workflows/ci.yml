@@ -43,6 +43,7 @@ jobs:
         run: |
           RUSTMISTMCP_BINARY=target/release/rustmistmcp scripts/verify-packaging.sh
           scripts/test-lxc-installer.sh
+          scripts/test-lxc-installer-paths.sh
           scripts/test-release-policy.sh
           shellcheck scripts/*.sh packaging/lxc/install.sh
       - name: Verify systemd unit with staged executable
