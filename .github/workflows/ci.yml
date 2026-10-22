@@ -95,7 +95,7 @@ jobs:
       - name: Build image
         run: docker build --build-arg VERSION=ci --build-arg REVISION="$GITHUB_SHA" --tag rustmistmcp:ci .
       - name: Conformance
-        uses: mechubsec/mecmcp/packaging/conformance@c1511e2fb2178687e15fc4a882899c17145bfa50
+        uses: mechubsec/mecmcp/packaging/conformance@4815d7b4121be78745ceeae12c25ed86d6da9b2f
         with:
           staging: staging
           manifest: staging/conformance.toml
