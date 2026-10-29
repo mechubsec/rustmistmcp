@@ -3845,6 +3845,8 @@ mod tests {
 
     fn caller(target: &str) -> CallerCtx<MistGrant> {
         CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "alice".to_owned(),
             devices: ScopeSet::Allowlist(vec![target.to_owned()]),
@@ -3872,6 +3874,8 @@ mod tests {
     /// `token_name`/`actor_type` rather than a `MistGrant`.
     fn caller_named(token_name: &str, actor_type: ActorType) -> CallerCtx<MistGrant> {
         CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: token_name.to_owned(),
             devices: ScopeSet::Allowlist(vec![
@@ -3936,6 +3940,8 @@ mod tests {
         )
         .expect("handler");
         let caller = CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "privileged-without-grant".to_owned(),
             devices: ScopeSet::Wildcard,
@@ -4295,6 +4301,8 @@ mod tests {
         .expect("handler");
         let target = format!("site/{site_id}");
         let caller = CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "alice".to_owned(),
             devices: ScopeSet::Allowlist(vec![target.clone()]),
@@ -4418,6 +4426,8 @@ mod tests {
         )
         .expect("handler");
         let caller = CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "wildcard".to_owned(),
             devices: ScopeSet::Wildcard,
@@ -4462,6 +4472,8 @@ mod tests {
         )
         .expect("handler");
         let introspection_only = CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "introspection-only".to_owned(),
             devices: ScopeSet::Allowlist(Vec::new()),
@@ -4516,6 +4528,8 @@ mod tests {
         )
         .expect("handler");
         let introspection_only = CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "introspection-only".to_owned(),
             devices: ScopeSet::Allowlist(Vec::new()),
@@ -4966,6 +4980,8 @@ mod tests {
             "searchSiteServicePathEvents",
         ];
         CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "redaction-sweep".to_owned(),
             devices: ScopeSet::Wildcard,

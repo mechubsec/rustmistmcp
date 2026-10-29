@@ -26,7 +26,6 @@ mecmcp-audit.workspace = true
 mecmcp-auth.workspace = true
 mecmcp-changeset.workspace = true
 mecmcp-http.workspace = true
-mecmcp-inventory.workspace = true
 mecmcp-secret.workspace = true
 mecmcp-server.workspace = true
 

@@ -33,7 +33,6 @@ mecmcp-audit.workspace = true
 mecmcp-auth.workspace = true
 mecmcp-changeset.workspace = true
 mecmcp-http.workspace = true
-mecmcp-job.workspace = true
 mecmcp-redact.workspace = true
 mecmcp-runtime.workspace = true
 mecmcp-secret.workspace = true

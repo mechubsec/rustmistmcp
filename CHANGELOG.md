@@ -10,6 +10,21 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
+### Changed
+
+- **mecmcp 0.28.1 -> 0.30.1** (#192). Behaviour is unchanged unless the new
+  upstream options are used, and none are enabled. User-visible upstream effects
+  that reach this binary: every audit line gains `identity_mechanism`
+  (`token`, `oauth`, `oidc-step-up`, `none`) and every per-call audit record
+  gains empty `oauth_issuer=`, `oauth_subject=`, `oauth_client_id=` fields, so
+  audit parsers must tolerate them; `token list` and `token set-scopes` show
+  `device_selectors`; the state file only moves to version 9 if
+  `--require-verified-proposer` is used (not enabled here).
+
+### Removed
+
+- Unused `mecmcp-inventory` and `mecmcp-job` dependencies (#192).
+
 ### Fixed
 
 - **`--lab-mode` starts on a non-loopback listener again** (#193). 0.4.0's
