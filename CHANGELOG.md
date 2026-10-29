@@ -10,6 +10,8 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-29
+
 ### Added
 
 - `examples/mcp.json.example` and a README stdio section: client config for
