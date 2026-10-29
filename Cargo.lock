@@ -2444,6 +2444,7 @@ dependencies = [
  "mecmcp-auth",
  "mecmcp-changeset",
  "mecmcp-http",
+ "mecmcp-openapi",
  "mecmcp-secret",
  "mecmcp-server",
  "rcgen",

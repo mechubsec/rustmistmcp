@@ -25,6 +25,7 @@ visible rather than looking like those versions never existed.
   audit parsers must tolerate them; `token list` and `token set-scopes` show
   `device_selectors`; the state file only moves to version 9 if
   `--require-verified-proposer` is used (not enabled here).
+- Catalog path parameters are now expanded with `mecmcp_openapi::expand_path`: each value is percent-encoded into exactly one segment, and values that would break the segment (`/`, `%2F`, `?`, `#`, `..`, empty, control characters), unknown parameters and unfilled placeholders are refused with `InvalidRequest`. `pagination.rs` is unchanged: Mist continuation uses page-number / `search_after` cursors, not the `from`/`size` offset paging of `mecmcp_openapi::page` (#192).
 
 ### Removed
 
