@@ -10,6 +10,14 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`--lab-mode` starts on a non-loopback listener again** (#193). 0.4.0's
+  refusal blocked networked lab deployments that serve over TLS with bearer
+  tokens. Off-loopback callers must still authenticate (`--allow-no-auth` stays
+  loopback-only), and the startup `lab mode enabled` WARN still fires. This
+  matches rustsdcmcp.
+
 ## [0.4.0] - 2026-10-12
 
 ### Security

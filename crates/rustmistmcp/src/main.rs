@@ -201,7 +201,6 @@ async fn main() -> Result<()> {
                 .parse::<std::net::IpAddr>()
                 .context("invalid --host IP address")?;
             let address = SocketAddr::new(host, args.shared.port);
-            refuse_lab_mode_off_loopback(args.lab_mode, &address)?;
             let shutdown = tokio_util::sync::CancellationToken::new();
 
             // Install signal handlers
@@ -643,35 +642,6 @@ fn warn_about_stale_secrets(live_path: &std::path::Path) {
     }
 }
 
-/// Refuse to start with `--lab-mode` unless the listener binds loopback.
-///
-/// Lab mode routes every change set through `ChangesetCoordinator::waive_approval`
-/// on creation (see `plan_mist_change`): it skips the human-approver gate this
-/// server otherwise routes through mecmcp's `approve_change_set`, and does so for
-/// every caller that reaches the listener, not merely a single trusted operator.
-/// That is the documented single-operator escape hatch (`--lab-mode`'s own help
-/// text says "do not run this against production devices"), and it stops being
-/// single-operator the moment the listener accepts a connection from anywhere but
-/// the machine it runs on. Fail fast at startup instead of letting an operator
-/// discover the gate is off only after a non-loopback client used it.
-///
-/// # Errors
-///
-/// Returns an error when `lab_mode` is set and `address` is not loopback
-/// (`127.0.0.0/8` or `::1`).
-fn refuse_lab_mode_off_loopback(lab_mode: bool, address: &SocketAddr) -> Result<()> {
-    if lab_mode && !address.ip().is_loopback() {
-        anyhow::bail!(
-            "--lab-mode waives the human-approver gate for every caller that reaches the \
-             listener, so it may only be combined with a loopback bind address \
-             (127.0.0.0/8 or ::1); got {}. Bind --host 127.0.0.1 (or ::1), or remove \
-             --lab-mode.",
-            address.ip()
-        );
-    }
-    Ok(())
-}
-
 fn load_listener_tls(args: &MistCli) -> Result<Option<Arc<rustls::ServerConfig>>> {
     let (Some(cert), Some(key)) = (&args.shared.tls_cert, &args.shared.tls_key) else {
         return Ok(None);
@@ -872,50 +842,6 @@ mod tests {
             resolved.path, malformed,
             "the given path must be used verbatim"
         );
-    }
-
-    /// `--lab-mode` on a non-loopback bind address must fail fast with a clear
-    /// error, not start a listener that waives the approval gate for every
-    /// remote caller.
-    #[test]
-    fn lab_mode_off_loopback_is_refused() {
-        let address: SocketAddr = "0.0.0.0:8080".parse().unwrap();
-        let error = refuse_lab_mode_off_loopback(true, &address)
-            .expect_err("lab mode on a non-loopback address must be refused");
-        let message = error.to_string();
-        assert!(message.contains("--lab-mode"), "{message}");
-        assert!(message.contains("loopback"), "{message}");
-
-        let ipv6_address: SocketAddr = "[2001:db8::1]:8080".parse().unwrap();
-        assert!(
-            refuse_lab_mode_off_loopback(true, &ipv6_address).is_err(),
-            "a non-loopback IPv6 address must also be refused"
-        );
-    }
-
-    /// Loopback binds (both IPv4 127.0.0.0/8 and IPv6 ::1) are permitted with
-    /// `--lab-mode`.
-    #[test]
-    fn lab_mode_on_loopback_is_permitted() {
-        let ipv4: SocketAddr = "127.0.0.1:8080".parse().unwrap();
-        refuse_lab_mode_off_loopback(true, &ipv4).expect("IPv4 loopback must be permitted");
-
-        let ipv4_wide: SocketAddr = "127.4.5.6:8080".parse().unwrap();
-        refuse_lab_mode_off_loopback(true, &ipv4_wide)
-            .expect("the whole 127.0.0.0/8 range must be permitted");
-
-        let ipv6: SocketAddr = "[::1]:8080".parse().unwrap();
-        refuse_lab_mode_off_loopback(true, &ipv6).expect("IPv6 loopback must be permitted");
-    }
-
-    /// Without `--lab-mode`, the bind address is not this check's business at
-    /// all -- a non-loopback bind is a separate concern the shared CLI
-    /// validator and `--allow-insecure-bind` already gate.
-    #[test]
-    fn non_lab_mode_ignores_bind_address() {
-        let address: SocketAddr = "0.0.0.0:8080".parse().unwrap();
-        refuse_lab_mode_off_loopback(false, &address)
-            .expect("without --lab-mode, any bind address is this check's no-op");
     }
 
     /// No `--approval-digest-key-file` keeps the coordinator unkeyed, same as
