@@ -92,4 +92,4 @@ jobs:
       # caller, never widened, so this job must grant them itself -- see
       # mecmcp's docs/RELEASE-WORKFLOWS.md.
       id-token: write
-    uses: mechubsec/mecmcp/.github/workflows/reusable-sign-release-tarball.yml@982b4d3e8cc660c97fe99826febac1476542cce5 # v0.28.2
+    uses: mechubsec/mecmcp/.github/workflows/reusable-sign-release-tarball.yml@8557155ed1ecd24e7ae25948d70485f0fc8c8451 # v0.30.1
