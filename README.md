@@ -172,6 +172,28 @@ states, retry classification, and deployment remain in this repository.
 listing only: every tool stays callable, and token tool/org/site scopes still
 authorize each call.
 
+### stdio transport
+
+`--transport stdio` runs the server as a child process of a local MCP client
+(Claude Desktop, Claude Code, and similar), speaking MCP over stdin/stdout with
+no listening socket. Use it for single-operator, same-machine setups; use
+streamable-http for anything shared or remote.
+
+- **No bearer-token layer.** `--tokens-file` is not read on stdio. The process
+  boundary is the trust boundary: whoever can launch the process is the one
+  caller, recorded in audit and change sets as the principal `stdio`. Tool,
+  org and site scopes from the token store do not apply; the `allowed_orgs`
+  list in `mist.json` still does. Because the planner and approver would both
+  be `stdio`, self-approval is refused, so a stdio client can plan WAN edge
+  changes but cannot apply them (see `docs/THREAT_MODEL.md` before combining
+  stdio with `--lab-mode`).
+- The Mist API token still comes from the credential file (or env-var name)
+  configured in `mist.json`, never from the client config.
+- `examples/mcp.json.example` has two client entries: the native binary and the
+  OCI image (arguments match `server.json`). Replace the placeholder paths.
+- For clients with a small tool budget, add `"--tool-mode", "compact"` to
+  `args` (see "Tool listing mode").
+
 ## Pre-release packaging and deployment boundary
 
 The checked-in Docker, archive, systemd, and LXC assets are **pre-release

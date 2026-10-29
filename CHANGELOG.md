@@ -12,6 +12,7 @@ visible rather than looking like those versions never existed.
 
 ### Added
 
+- `examples/mcp.json.example` and a README stdio section: client config for the native binary and the OCI image, and the stdio trust model (#192).
 - `--mist-connect-timeout-secs` (env `MIST_CONNECT_TIMEOUT_SECS`, default 10, 1-300), `--mist-request-timeout-secs` (`MIST_REQUEST_TIMEOUT_SECS`, default 30, 1-600), `--mist-max-429-retries` (`MIST_MAX_429_RETRIES`, default 2, 0-10) and `--mist-max-retry-wait-secs` (`MIST_MAX_RETRY_WAIT_SECS`, default 30, 1-600) configure the outbound Mist client; defaults match the previous hard-coded values (#192).
 - `--tool-mode full|compact` (env `MCP_TOOL_MODE`, default `full`): `compact` lists only the four catalog dispatchers (`search_mist_operations`, `get_mist_operation_schema`, `invoke_mist_read`, `invoke_mist_privileged_read`). Listing only; every tool stays callable within the token's scope (#192).
 
