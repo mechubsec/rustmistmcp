@@ -804,13 +804,26 @@ mod tests {
 
     #[test]
     fn build_url_refuses_segment_breaking_path_values() {
-        for bad in ["a/b", "a%2Fb", "a?x=1", "a#f", "..", ""] {
+        for bad in ["a/b", "a\\b", "a%2Fb", "a?x=1", "a#f", "..", ""] {
             let result = build_url_for_org_id(bad);
             assert!(
                 matches!(result, Err(MistError::InvalidRequest { .. })),
                 "{bad:?} must be refused, got {result:?}"
             );
         }
+    }
+
+    #[test]
+    fn build_url_refuses_a_missing_path_placeholder() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = HttpMistClient::from_test_parts(
+            Url::parse("https://api.mist.com/").expect("url"),
+            TEST_TOKEN.to_owned(),
+            test_catalog(),
+            1024 * 1024,
+        );
+        let result = client.build_url("getOrg", &BTreeMap::new(), &BTreeMap::new(), None);
+        assert!(matches!(result, Err(MistError::InvalidRequest { .. })));
     }
 
     #[test]

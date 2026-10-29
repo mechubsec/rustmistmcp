@@ -36,10 +36,11 @@ pub struct MistCli {
     /// with `waived: { reason: "lab-mode" }`, so it stays distinguishable from one
     /// a second person actually reviewed.
     ///
-    /// Refused at startup unless the listener binds loopback -- but a loopback
-    /// bind reachable through a reverse proxy or an SSH/port forward is still
-    /// reachable by remote callers, and this check cannot see that. Keeping
-    /// this server unreachable from outside the host is the operator's job.
+    /// Works on any bind address. Callers off loopback still need bearer
+    /// tokens, and a startup WARN is logged. A loopback bind reachable through
+    /// a reverse proxy or an SSH/port forward is still reachable by remote
+    /// callers; keeping this server unreachable from outside the host is the
+    /// operator's job.
     ///
     /// Spelled identically on every mecmcp server.
     #[arg(long = "lab-mode")]
@@ -83,7 +84,7 @@ pub struct MistCli {
         long = "mist-max-429-retries",
         env = "MIST_MAX_429_RETRIES",
         default_value_t = 2,
-        value_parser = clap::value_parser!(u8).range(0..=10)
+        value_parser = clap::value_parser!(u8).range(0..=5)
     )]
     pub mist_max_429_retries: u8,
 
@@ -92,7 +93,7 @@ pub struct MistCli {
         long = "mist-max-retry-wait-secs",
         env = "MIST_MAX_RETRY_WAIT_SECS",
         default_value_t = 30,
-        value_parser = clap::value_parser!(u64).range(1..=600)
+        value_parser = clap::value_parser!(u64).range(1..=120)
     )]
     pub mist_max_retry_wait_secs: u64,
 }
@@ -163,9 +164,9 @@ mod tests {
             ["--mist-connect-timeout-secs", "301"],
             ["--mist-request-timeout-secs", "0"],
             ["--mist-request-timeout-secs", "601"],
-            ["--mist-max-429-retries", "11"],
+            ["--mist-max-429-retries", "6"],
             ["--mist-max-retry-wait-secs", "0"],
-            ["--mist-max-retry-wait-secs", "601"],
+            ["--mist-max-retry-wait-secs", "121"],
         ] {
             assert!(parse(&bad).is_err(), "{bad:?} should be rejected");
         }

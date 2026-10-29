@@ -4,8 +4,9 @@
       "command": "/usr/local/bin/rustmistmcp",
       "args": [
         "--transport", "stdio",
-        "--device-mapping", "/etc/rustmistmcp/mist.json",
-        "--state-file", "/var/lib/rustmistmcp/changeset-state.json"
+        "--device-mapping", "/absolute/path/to/mist.json",
+        "--audit-redact", "devices=hmac,host=hmac,name=hmac,basename=hmac,command=hmac,pfe_command=hmac",
+        "--audit-hmac-key-file", "/absolute/path/to/audit-hmac.key"
       ]
     },
     "rustmistmcp-oci": {
@@ -16,7 +17,7 @@
         "-v", "/absolute/path/to/mist.json:/etc/rustmistmcp/mist.json:ro",
         "-v", "/absolute/path/to/mist-api-token:/etc/rustmistmcp/mist-api-token:ro",
         "-v", "/absolute/path/to/state-dir:/var/lib/rustmistmcp",
-        "ghcr.io/mechubsec/rustmistmcp:0.4.0",
+        "ghcr.io/mechubsec/rustmistmcp@sha256:<verified-64-hex-digest>",
         "--transport", "stdio",
         "--state-file", "/var/lib/rustmistmcp/changeset-state.json"
       ]

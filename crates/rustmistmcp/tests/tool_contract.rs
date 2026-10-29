@@ -109,6 +109,44 @@ async fn registry_contains_only_the_approved_read_tools() {
     server_task.abort();
 }
 
+/// `--tool-mode compact` through the real `list_tools`: a caller-less (stdio)
+/// list is the compact dispatchers minus the restricted one.
+#[tokio::test]
+async fn compact_tool_mode_lists_only_the_unrestricted_dispatchers_over_mcp() {
+    let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+    let server = MistHandler::blocked("https://api.mist.com/", vec![ORG_ID.to_owned()], site_map())
+        .expect("valid blocked handler")
+        .with_tool_mode(mecmcp_runtime::cli::ToolMode::Compact);
+    let server_task = tokio::spawn(async move {
+        server
+            .serve(server_transport)
+            .await
+            .expect("server initialization")
+            .waiting()
+            .await
+    });
+    let client = ().serve(client_transport).await.expect("client initialization");
+
+    let tools = client.list_tools(None).await.expect("tool list");
+    let mut names: Vec<_> = tools
+        .tools
+        .iter()
+        .map(|tool| tool.name.to_string())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            "get_mist_operation_schema",
+            "invoke_mist_read",
+            "search_mist_operations"
+        ]
+    );
+
+    client.cancel().await.expect("client shutdown");
+    server_task.abort();
+}
+
 #[tokio::test]
 async fn registry_schemas_are_strict_and_dispatchers_accept_no_raw_http_inputs() {
     let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);

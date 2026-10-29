@@ -52,7 +52,7 @@ foundation shared by the mechub MCP server family. This repository is a
 | Streamable-HTTP transport, host/Origin checks, rate + concurrency limits | `mecmcp-transport` |
 | CLI skeleton, TLS bootstrap, signals, graceful shutdown | `mecmcp-runtime` |
 | Plan → digest → approve → apply → verify change control | `mecmcp-changeset` |
-| Org/site/tenant registry | `mecmcp-inventory` |
+| OpenAPI catalog path expansion (per-segment percent-encoding) | `mecmcp-openapi` |
 | **Mist REST client, API-token auth, response models, tool surface** | **this repo** |
 
 Everything that is *not* specific to the Mist API is upstream. If you find
@@ -135,11 +135,12 @@ performs no I/O; `LIVE_MIST_BLOCKER` is the message it refuses with.
 |---|---|---|---|
 | `--mist-connect-timeout-secs` | `MIST_CONNECT_TIMEOUT_SECS` | `10` | 1-300 |
 | `--mist-request-timeout-secs` | `MIST_REQUEST_TIMEOUT_SECS` | `30` | 1-600 |
-| `--mist-max-429-retries` | `MIST_MAX_429_RETRIES` | `2` | 0-10 (`0` disables retry) |
-| `--mist-max-retry-wait-secs` | `MIST_MAX_RETRY_WAIT_SECS` | `30` | 1-600 |
+| `--mist-max-429-retries` | `MIST_MAX_429_RETRIES` | `2` | 0-5 (`0` disables retry) |
+| `--mist-max-retry-wait-secs` | `MIST_MAX_RETRY_WAIT_SECS` | `30` | 1-120 |
 
 The retry wait honors `Retry-After` but never exceeds `--mist-max-retry-wait-secs`.
-Out-of-range values are rejected at startup.
+Out-of-range values are rejected at startup. A 429 retry wait holds a Mist
+concurrency permit, so long waits reduce throughput.
 
 ### Site discovery
 
@@ -166,11 +167,13 @@ states, retry classification, and deployment remain in this repository.
 ### Tool listing mode
 
 `--tool-mode full|compact` (env `MCP_TOOL_MODE`, default `full`) controls what
-`tools/list` advertises. `compact` lists only the four catalog dispatchers
+`tools/list` advertises. `compact` lists only the catalog dispatchers the caller may see
 (`search_mist_operations`, `get_mist_operation_schema`, `invoke_mist_read`,
-`invoke_mist_privileged_read`) to keep the client's tool context small. It is
-listing only: every tool stays callable, and token tool/org/site scopes still
-authorize each call.
+`invoke_mist_privileged_read`) to keep the client's tool context small. The
+list is still scope-filtered: stdio callers and wildcard-scope tokens see
+three, and `invoke_mist_privileged_read` appears only for a token that
+explicitly allows it. It is listing only: every tool stays callable, and token
+tool/org/site scopes still authorize each call.
 
 ### stdio transport
 
@@ -187,6 +190,15 @@ streamable-http for anything shared or remote.
   be `stdio`, self-approval is refused, so a stdio client can plan WAN edge
   changes but cannot apply them (see `docs/THREAT_MODEL.md` before combining
   stdio with `--lab-mode`).
+- **Restricted tools are hidden, not blocked.** `plan_mist_change`,
+  `invoke_mist_privileged_read`, `get_mist_self`, `search_mist_audit_logs` and
+  the rest of `RESTRICTED_TOOLS` (`crates/rustmistmcp/src/server/mod.rs`) are
+  omitted from `tools/list` on stdio but remain callable by name.
+- **Never combine stdio, `--lab-mode`, and a production-reaching Mist token.**
+  Under `--lab-mode` a single stdio agent can plan and apply a WAN edge change
+  against the real org (`docs/THREAT_MODEL.md`).
+- Native stdio audit is unredacted unless `--audit-redact` and
+  `--audit-hmac-key-file` are given; the OCI image's entrypoint supplies both.
 - The Mist API token still comes from the credential file (or env-var name)
   configured in `mist.json`, never from the client config.
 - `examples/mcp.json.example` has two client entries: the native binary and the

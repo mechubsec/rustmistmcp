@@ -4486,8 +4486,9 @@ mod tests {
         }
     }
 
-    /// Compact mode lists exactly the registered `COMPACT_TOOLS`; full lists
-    /// the whole router. Mode is applied before scope, as in `list_tools`.
+    /// Compact mode keeps exactly the registered `COMPACT_TOOLS` from the
+    /// router; full keeps the whole router. This checks the mode filter only;
+    /// scope filtering is covered by the `list_tools` test in `tool_contract`.
     #[test]
     fn tool_mode_compact_lists_only_registered_compact_tools() {
         let handler = MistHandler::blocked(
