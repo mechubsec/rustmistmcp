@@ -140,8 +140,10 @@ async fn main() -> Result<()> {
             .map(mecmcp_audit::EvidenceService::recorder),
         approval_digest_key,
         std::time::Duration::from_secs(args.approval_timeout_secs),
+        args.mist_client_config(),
     )
-    .context("constructing Mist handler with HTTP client")?;
+    .context("constructing Mist handler with HTTP client")?
+    .with_tool_mode(args.tool_mode.tool_mode);
     tracing::info!(
         "Mist handler constructed with HttpMistClient for endpoint {}",
         config.endpoint
@@ -697,6 +699,11 @@ mod tests {
             lab_mode: false,
             web_approver: Default::default(),
             site_refresh_interval_secs: 0,
+            tool_mode: Default::default(),
+            mist_connect_timeout_secs: 10,
+            mist_request_timeout_secs: 30,
+            mist_max_429_retries: 2,
+            mist_max_retry_wait_secs: 30,
         };
 
         let result = load_http_token_store(&args);
@@ -745,6 +752,11 @@ mod tests {
             lab_mode: false,
             web_approver: Default::default(),
             site_refresh_interval_secs: 0,
+            tool_mode: Default::default(),
+            mist_connect_timeout_secs: 10,
+            mist_request_timeout_secs: 30,
+            mist_max_429_retries: 2,
+            mist_max_retry_wait_secs: 30,
         };
 
         let result = load_http_token_store(&args);
@@ -951,6 +963,11 @@ mod tests {
             lab_mode: false,
             web_approver: Default::default(),
             site_refresh_interval_secs: 0,
+            tool_mode: Default::default(),
+            mist_connect_timeout_secs: 10,
+            mist_request_timeout_secs: 30,
+            mist_max_429_retries: 2,
+            mist_max_retry_wait_secs: 30,
         }
     }
 }

@@ -10,6 +10,61 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
+### Added
+
+- `examples/mcp.json.example` and a README stdio section: client config for
+  the native binary and the OCI image, and the stdio trust model (#192).
+- `--mist-connect-timeout-secs` (env `MIST_CONNECT_TIMEOUT_SECS`, default 10,
+  1-300), `--mist-request-timeout-secs` (`MIST_REQUEST_TIMEOUT_SECS`, default
+  30, 1-600), `--mist-max-429-retries` (`MIST_MAX_429_RETRIES`, default 2,
+  0-5) and `--mist-max-retry-wait-secs` (`MIST_MAX_RETRY_WAIT_SECS`, default
+  30, 1-120) configure the outbound Mist client; defaults match the previous
+  hard-coded values (#192).
+- `--tool-mode full|compact` (env `MCP_TOOL_MODE`, default `full`): `compact`
+  lists only the catalog dispatchers the caller may see (`search_mist_operations`,
+  `get_mist_operation_schema`, `invoke_mist_read`, and
+  `invoke_mist_privileged_read`). The list is still scope-filtered: stdio
+  callers and wildcard-scope tokens see three, and
+  `invoke_mist_privileged_read` appears only for a token that explicitly
+  allows it. Listing only; every tool stays callable within the token's scope
+  (#192).
+
+### Changed
+
+- **mecmcp 0.28.1 -> 0.30.1** (#192). Behaviour is unchanged unless the new
+  upstream options are used, and none are enabled. User-visible upstream
+  effects that reach this binary: every per-call audit record gains
+  `identity_mechanism` (`token`, `oauth`, `oidc-step-up`, `none`) and empty
+  `oauth_issuer=`, `oauth_subject=`, `oauth_client_id=` fields, so audit
+  parsers must tolerate them (operational `target: "audit"` events are
+  unchanged); `token list` and `token set-scopes` show `device_selectors`; the
+  state file only moves to version 9 if `--require-verified-proposer` is used,
+  and rustmistmcp does not expose that flag.
+  **Upgrade note:** mecmcp 0.29.0 reserves the `oauth:` token-name prefix. A
+  `tokens.json` containing any token named `oauth:*` now fails to load as a
+  whole, so every token is refused. Run `rustmistmcp token list` and rename any
+  `oauth:*` bearer token before upgrading.
+  **Do not use `token add --device-selector` with rustmistmcp.** It is newly
+  accepted, but rustmistmcp supplies no device-attribute source, so a selector
+  token reaches no org or site (it fails closed). Rolling back to 0.4.0 makes
+  that binary ignore `device_selectors` and grant the broad `devices` scope.
+- The outbound Mist client's 429 retry ceilings are lowered to 5 retries and a
+  120 s single wait (see the timeout flags above), and a 429 retry wait holds a
+  Mist concurrency permit, so long waits reduce throughput (#192).
+- Catalog path parameters are now expanded with `mecmcp_openapi::expand_path`:
+  each value is percent-encoded into exactly one segment. Values that would
+  break the segment (`/`, `\`, `%2F`, `?`, `#`, `.`, `..`, empty, control
+  characters), unknown parameters and unfilled placeholders are refused with
+  `InvalidRequest`. **Wire change:** sub-delims, `:`, `@`, `+` and `%` in path
+  values are now percent-encoded (`%` becomes `%25`), so a caller that
+  pre-encodes a value now has it taken literally. `pagination.rs` is
+  unchanged: Mist continuation uses page-number / `search_after` cursors, not
+  the `from`/`size` offset paging of `mecmcp_openapi::page` (#192).
+
+### Removed
+
+- Unused `mecmcp-inventory` and `mecmcp-job` dependencies (#192).
+
 ### Fixed
 
 - **`--lab-mode` starts on a non-loopback listener again** (#193). 0.4.0's

@@ -339,20 +339,22 @@ impl HttpMistClient {
             .ok_or_else(|| MistError::UnknownOperation(operation_id.to_owned()))?;
 
         let mut url = self.base_url.clone();
-        let mut expanded_path = operation.path.clone();
-
-        for (param_name, param_value) in path {
-            let placeholder = format!("{{{param_name}}}");
-            if !expanded_path.contains(&placeholder) {
-                return Err(MistError::InvalidRequest {
+        // Each value is percent-encoded into exactly one segment; values that
+        // would add a segment, a query, or `..` are refused, as are unknown
+        // parameters and unfilled placeholders.
+        let params: Vec<(&str, &str)> = path
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect();
+        let expanded_path =
+            mecmcp_openapi::expand_path(&operation.path, &params).map_err(|error| {
+                MistError::InvalidRequest {
                     operation_id: operation_id.to_owned(),
-                    reason: format!("path parameter {param_name} not in operation path"),
-                });
-            }
-            expanded_path = expanded_path.replace(&placeholder, param_value);
-        }
+                    reason: error.to_string(),
+                }
+            })?;
 
-        url.set_path(&expanded_path);
+        url.set_path(expanded_path.as_str());
 
         // A continuation replaces whatever page/search_after value the stored
         // request context carried forward, so it is merged into the query map
@@ -778,6 +780,67 @@ mod tests {
             .build_url("getOrg", &path, &query, None)
             .expect("build URL");
         assert_eq!(url.path(), format!("/api/v1/orgs/{ORG_ID}"));
+    }
+
+    fn build_url_for_org_id(org_id: &str) -> Result<Url, MistError> {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = HttpMistClient::from_test_parts(
+            Url::parse("https://api.mist.com/").expect("url"),
+            TEST_TOKEN.to_owned(),
+            test_catalog(),
+            1024 * 1024,
+        );
+        let path = BTreeMap::from([("org_id".to_owned(), org_id.to_owned())]);
+        client.build_url("getOrg", &path, &BTreeMap::new(), None)
+    }
+
+    #[test]
+    fn build_url_percent_encodes_path_values_without_double_encoding() {
+        let url = build_url_for_org_id("a b").expect("space");
+        assert_eq!(url.path(), "/api/v1/orgs/a%20b");
+        let url = build_url_for_org_id("caf\u{e9}").expect("non-ascii");
+        assert_eq!(url.path(), "/api/v1/orgs/caf%C3%A9");
+    }
+
+    #[test]
+    fn build_url_refuses_segment_breaking_path_values() {
+        for bad in ["a/b", "a\\b", "a%2Fb", "a?x=1", "a#f", "..", ""] {
+            let result = build_url_for_org_id(bad);
+            assert!(
+                matches!(result, Err(MistError::InvalidRequest { .. })),
+                "{bad:?} must be refused, got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn build_url_refuses_a_missing_path_placeholder() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = HttpMistClient::from_test_parts(
+            Url::parse("https://api.mist.com/").expect("url"),
+            TEST_TOKEN.to_owned(),
+            test_catalog(),
+            1024 * 1024,
+        );
+        let result = client.build_url("getOrg", &BTreeMap::new(), &BTreeMap::new(), None);
+        assert!(matches!(result, Err(MistError::InvalidRequest { .. })));
+    }
+
+    #[test]
+    fn build_url_refuses_unknown_path_parameter() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = HttpMistClient::from_test_parts(
+            Url::parse("https://api.mist.com/").expect("url"),
+            TEST_TOKEN.to_owned(),
+            test_catalog(),
+            1024 * 1024,
+        );
+        let path = BTreeMap::from([
+            ("org_id".to_owned(), ORG_ID.to_owned()),
+            ("bogus".to_owned(), "x".to_owned()),
+        ]);
+        let result = client.build_url("getOrg", &path, &BTreeMap::new(), None);
+        assert!(matches!(result, Err(MistError::InvalidRequest { .. })));
     }
 
     #[test]

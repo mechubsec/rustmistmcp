@@ -231,8 +231,19 @@ pub struct MistHandler {
     evidence: Option<Arc<mecmcp_audit::recorder::EvidenceRecorder>>,
     /// Whether lab mode is enabled (auto-waive on creation).
     lab_mode: bool,
+    /// `Some(COMPACT_TOOLS)` under `--tool-mode compact`; `None` lists all.
+    compact_tools: Option<&'static [&'static str]>,
     tool_router: ToolRouter<Self>,
 }
+
+/// What `--tool-mode compact` lists: the catalog dispatchers only. Listing
+/// only; every tool stays callable within the caller's token scope.
+pub const COMPACT_TOOLS: &[&str] = &[
+    "search_mist_operations",
+    "get_mist_operation_schema",
+    "invoke_mist_read",
+    "invoke_mist_privileged_read",
+];
 
 /// Default change-set limits for this consumer.
 ///
@@ -379,6 +390,7 @@ impl MistHandler {
             None,
             None,
             DEFAULT_APPROVAL_TIMEOUT,
+            rustmistmcp_core::HttpMistClientConfig::default(),
         )
     }
 
@@ -391,6 +403,10 @@ impl MistHandler {
     ///
     /// Returns errors for invalid config, credential load failure, or client
     /// construction failure.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one production wiring site; a params struct would only add indirection"
+    )]
     pub fn from_config_with_lab_mode(
         config: &rustmistmcp_core::MistConfig,
         sites: BTreeMap<String, String>,
@@ -399,6 +415,7 @@ impl MistHandler {
         evidence: Option<Arc<mecmcp_audit::recorder::EvidenceRecorder>>,
         approval_digest_key: Option<mecmcp_changeset::ApprovalDigestKey>,
         approval_timeout: std::time::Duration,
+        client_config: rustmistmcp_core::HttpMistClientConfig,
     ) -> Result<Self, MistServerError> {
         // Load credential from whichever source this profile configured
         // (env var or hardened mode-0600 file; `MistConfig::validate` already
@@ -413,7 +430,7 @@ impl MistHandler {
             &config.endpoint,
             credential.expose().to_owned(),
             catalog.clone(),
-            rustmistmcp_core::HttpMistClientConfig::default(),
+            client_config,
         )
         .map_err(|error| MistServerError::ClientConstruction(error.to_string()))?;
 
@@ -453,6 +470,7 @@ impl MistHandler {
             coordinator,
             evidence,
             lab_mode,
+            compact_tools: None,
             tool_router: Self::mist_tool_router(),
         })
     }
@@ -512,6 +530,7 @@ impl MistHandler {
             )?,
             evidence: None,
             lab_mode,
+            compact_tools: None,
             tool_router: Self::mist_tool_router(),
         })
     }
@@ -545,8 +564,17 @@ impl MistHandler {
             )?,
             evidence: Some(evidence),
             lab_mode: false,
+            compact_tools: None,
             tool_router: Self::mist_tool_router(),
         })
+    }
+
+    /// List only [`COMPACT_TOOLS`] under `ToolMode::Compact`. Listing only.
+    #[must_use]
+    pub fn with_tool_mode(mut self, mode: mecmcp_runtime::cli::ToolMode) -> Self {
+        self.compact_tools =
+            (mode == mecmcp_runtime::cli::ToolMode::Compact).then_some(COMPACT_TOOLS);
+        self
     }
 
     /// Whether `target` falls outside the configured org allowlist.
@@ -3692,7 +3720,8 @@ impl ServerHandler for MistHandler {
         let caller = mecmcp_server::caller_from_extensions::<rustmistmcp_core::MistGrant>(
             &context.extensions,
         );
-        let tools = self.tool_router.list_all();
+        let tools =
+            mecmcp_server::filter_tools_for_mode(self.tool_router.list_all(), self.compact_tools);
         let visible = if caller.is_some() {
             filter_tools_for_scope(tools, caller, RESTRICTED_TOOLS)
         } else {
@@ -3845,6 +3874,8 @@ mod tests {
 
     fn caller(target: &str) -> CallerCtx<MistGrant> {
         CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "alice".to_owned(),
             devices: ScopeSet::Allowlist(vec![target.to_owned()]),
@@ -3872,6 +3903,8 @@ mod tests {
     /// `token_name`/`actor_type` rather than a `MistGrant`.
     fn caller_named(token_name: &str, actor_type: ActorType) -> CallerCtx<MistGrant> {
         CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: token_name.to_owned(),
             devices: ScopeSet::Allowlist(vec![
@@ -3936,6 +3969,8 @@ mod tests {
         )
         .expect("handler");
         let caller = CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "privileged-without-grant".to_owned(),
             devices: ScopeSet::Wildcard,
@@ -4295,6 +4330,8 @@ mod tests {
         .expect("handler");
         let target = format!("site/{site_id}");
         let caller = CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "alice".to_owned(),
             devices: ScopeSet::Allowlist(vec![target.clone()]),
@@ -4418,6 +4455,8 @@ mod tests {
         )
         .expect("handler");
         let caller = CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "wildcard".to_owned(),
             devices: ScopeSet::Wildcard,
@@ -4447,6 +4486,42 @@ mod tests {
         }
     }
 
+    /// Compact mode keeps exactly the registered `COMPACT_TOOLS` from the
+    /// router; full keeps the whole router. This checks the mode filter only;
+    /// scope filtering is covered by the `list_tools` test in `tool_contract`.
+    #[test]
+    fn tool_mode_compact_lists_only_registered_compact_tools() {
+        let handler = MistHandler::blocked(
+            "https://api.mist.com/",
+            vec!["11111111-1111-1111-1111-111111111111".to_owned()],
+            BTreeMap::new(),
+        )
+        .expect("handler");
+        let all = handler.tool_router.list_all();
+        let names_in = |handler: &MistHandler| {
+            let mut names = mecmcp_server::filter_tools_for_mode(
+                handler.tool_router.list_all(),
+                handler.compact_tools,
+            )
+            .iter()
+            .map(|tool| tool.name.to_string())
+            .collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+        assert_eq!(names_in(&handler).len(), all.len());
+
+        let compact = handler.with_tool_mode(mecmcp_runtime::cli::ToolMode::Compact);
+        let mut expected = all
+            .iter()
+            .map(|tool| tool.name.to_string())
+            .filter(|name| COMPACT_TOOLS.contains(&name.as_str()))
+            .collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(names_in(&compact), expected);
+        assert_eq!(expected.len(), COMPACT_TOOLS.len());
+    }
+
     /// `search_mist_operations` is pure catalog introspection: describing an
     /// operation and being allowed to invoke it are different privileges. A
     /// caller scoped only to the search tool itself (no `invoke_mist_read` or
@@ -4462,6 +4537,8 @@ mod tests {
         )
         .expect("handler");
         let introspection_only = CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "introspection-only".to_owned(),
             devices: ScopeSet::Allowlist(Vec::new()),
@@ -4516,6 +4593,8 @@ mod tests {
         )
         .expect("handler");
         let introspection_only = CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "introspection-only".to_owned(),
             devices: ScopeSet::Allowlist(Vec::new()),
@@ -4966,6 +5045,8 @@ mod tests {
             "searchSiteServicePathEvents",
         ];
         CallerCtx {
+            oauth: None,
+            verified_proposer: None,
             request_id: uuid::Uuid::new_v4(),
             token_name: "redaction-sweep".to_owned(),
             devices: ScopeSet::Wildcard,

@@ -208,6 +208,7 @@ pub(crate) async fn stage_plan(
         id: change_set_id.clone(),
         owner: owner.clone(),
         owner_subject,
+        owner_verified: false,
         device: device.clone(),
         expected_candidate_fingerprint: fingerprint.clone(),
         actions: vec![action],

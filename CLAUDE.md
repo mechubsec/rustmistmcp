@@ -65,9 +65,11 @@ across the mechub MCP server family. The split is not negotiable:
 - **Upstream in `mecmcp`:** token auth/scopes/grants (`mecmcp-auth`), audit and
   redaction (`mecmcp-audit`), streamable-HTTP transport and limits
   (`mecmcp-transport`), CLI/TLS/shutdown (`mecmcp-runtime`), change-control
-  state machine (`mecmcp-changeset`), inventory (`mecmcp-inventory`), the
-  outbound HTTPS client (`mecmcp-http`), secret loading (`mecmcp-secret`), job
-  polling (`mecmcp-job`), and the server scaffold (`mecmcp-server`).
+  state machine (`mecmcp-changeset`), the outbound HTTPS client
+  (`mecmcp-http`), OpenAPI catalog path expansion (`mecmcp-openapi`), redaction
+  (`mecmcp-redact`), secret loading (`mecmcp-secret`), and the server scaffold
+  (`mecmcp-server`). Upstream also has inventory and job-polling crates, which
+  this repo does not use.
 - **Here:** the Mist REST client, its v1 API-token auth flow, response models,
   and the MCP tool surface built on them.
 
