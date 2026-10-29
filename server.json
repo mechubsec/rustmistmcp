@@ -3,7 +3,7 @@
   "name": "io.github.mechubsec/rustmistmcp",
   "title": "rustmistmcp",
   "description": "HPE Juniper Mist MCP server: scoped, audited, two-person change control. Rust.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "websiteUrl": "https://mechub.org/projects/rustmistmcp/",
   "repository": {
     "url": "https://github.com/mechubsec/rustmistmcp",
@@ -12,7 +12,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/mechubsec/rustmistmcp:0.4.0",
+      "identifier": "ghcr.io/mechubsec/rustmistmcp:0.5.0",
       "runtimeHint": "docker",
       "runtimeArguments": [
         {
