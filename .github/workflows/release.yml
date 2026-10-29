@@ -99,14 +99,14 @@ jobs:
           else
             echo "push=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Log in to Docker Hub
         if: steps.dockerhub.outputs.push == 'true'
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -230,7 +230,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: mechubsec/mecmcp/.github/workflows/reusable-registry-publish.yml@982b4d3e8cc660c97fe99826febac1476542cce5 # v0.28.2
+    uses: mechubsec/mecmcp/.github/workflows/reusable-registry-publish.yml@8557155ed1ecd24e7ae25948d70485f0fc8c8451 # v0.30.1
     with:
       version: ${{ needs.tag-version.outputs.version }}
       oci-image: ghcr.io/${{ github.repository }}:${{ needs.tag-version.outputs.version }}
