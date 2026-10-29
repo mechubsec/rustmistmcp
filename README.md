@@ -129,6 +129,18 @@ What is *not* done, and must not be described as done:
 A handler constructed without a credential uses `BlockedMistClient`, which
 performs no I/O; `LIVE_MIST_BLOCKER` is the message it refuses with.
 
+### Outbound Mist timeouts and 429 retries
+
+| Flag | Env | Default | Range |
+|---|---|---|---|
+| `--mist-connect-timeout-secs` | `MIST_CONNECT_TIMEOUT_SECS` | `10` | 1-300 |
+| `--mist-request-timeout-secs` | `MIST_REQUEST_TIMEOUT_SECS` | `30` | 1-600 |
+| `--mist-max-429-retries` | `MIST_MAX_429_RETRIES` | `2` | 0-10 (`0` disables retry) |
+| `--mist-max-retry-wait-secs` | `MIST_MAX_RETRY_WAIT_SECS` | `30` | 1-600 |
+
+The retry wait honors `Retry-After` but never exceeds `--mist-max-retry-wait-secs`.
+Out-of-range values are rejected at startup.
+
 ### Site discovery
 
 Site-scoped tools refuse any site the handler does not already know (see

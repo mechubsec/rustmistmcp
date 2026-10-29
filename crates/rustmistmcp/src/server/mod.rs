@@ -390,6 +390,7 @@ impl MistHandler {
             None,
             None,
             DEFAULT_APPROVAL_TIMEOUT,
+            rustmistmcp_core::HttpMistClientConfig::default(),
         )
     }
 
@@ -402,6 +403,10 @@ impl MistHandler {
     ///
     /// Returns errors for invalid config, credential load failure, or client
     /// construction failure.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one production wiring site; a params struct would only add indirection"
+    )]
     pub fn from_config_with_lab_mode(
         config: &rustmistmcp_core::MistConfig,
         sites: BTreeMap<String, String>,
@@ -410,6 +415,7 @@ impl MistHandler {
         evidence: Option<Arc<mecmcp_audit::recorder::EvidenceRecorder>>,
         approval_digest_key: Option<mecmcp_changeset::ApprovalDigestKey>,
         approval_timeout: std::time::Duration,
+        client_config: rustmistmcp_core::HttpMistClientConfig,
     ) -> Result<Self, MistServerError> {
         // Load credential from whichever source this profile configured
         // (env var or hardened mode-0600 file; `MistConfig::validate` already
@@ -424,7 +430,7 @@ impl MistHandler {
             &config.endpoint,
             credential.expose().to_owned(),
             catalog.clone(),
-            rustmistmcp_core::HttpMistClientConfig::default(),
+            client_config,
         )
         .map_err(|error| MistServerError::ClientConstruction(error.to_string()))?;
 
