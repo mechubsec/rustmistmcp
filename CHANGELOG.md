@@ -10,6 +10,10 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
+### Added
+
+- `--tool-mode full|compact` (env `MCP_TOOL_MODE`, default `full`): `compact` lists only the four catalog dispatchers (`search_mist_operations`, `get_mist_operation_schema`, `invoke_mist_read`, `invoke_mist_privileged_read`). Listing only; every tool stays callable within the token's scope (#192).
+
 ### Changed
 
 - **mecmcp 0.28.1 -> 0.30.1** (#192). Behaviour is unchanged unless the new

@@ -52,4 +52,9 @@ pub struct MistCli {
     /// never refreshes, so newly added or removed sites require a restart.
     #[arg(long = "site-refresh-interval-secs", default_value_t = 300)]
     pub site_refresh_interval_secs: u64,
+
+    /// `--tool-mode full|compact` (env `MCP_TOOL_MODE`): compact lists only the
+    /// four catalog dispatchers. Listing only; token scopes still authorize.
+    #[command(flatten)]
+    pub tool_mode: mecmcp_runtime::cli::ToolModeArgs,
 }

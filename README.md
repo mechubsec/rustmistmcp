@@ -151,6 +151,15 @@ Shared `TokenSecret`, cancellation, and changeset primitives are reused, not
 rebuilt. Mist header names, catalog policy, request/response schemas, terminal
 states, retry classification, and deployment remain in this repository.
 
+### Tool listing mode
+
+`--tool-mode full|compact` (env `MCP_TOOL_MODE`, default `full`) controls what
+`tools/list` advertises. `compact` lists only the four catalog dispatchers
+(`search_mist_operations`, `get_mist_operation_schema`, `invoke_mist_read`,
+`invoke_mist_privileged_read`) to keep the client's tool context small. It is
+listing only: every tool stays callable, and token tool/org/site scopes still
+authorize each call.
+
 ## Pre-release packaging and deployment boundary
 
 The checked-in Docker, archive, systemd, and LXC assets are **pre-release

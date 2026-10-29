@@ -231,8 +231,19 @@ pub struct MistHandler {
     evidence: Option<Arc<mecmcp_audit::recorder::EvidenceRecorder>>,
     /// Whether lab mode is enabled (auto-waive on creation).
     lab_mode: bool,
+    /// `Some(COMPACT_TOOLS)` under `--tool-mode compact`; `None` lists all.
+    compact_tools: Option<&'static [&'static str]>,
     tool_router: ToolRouter<Self>,
 }
+
+/// What `--tool-mode compact` lists: the catalog dispatchers only. Listing
+/// only; every tool stays callable within the caller's token scope.
+pub const COMPACT_TOOLS: &[&str] = &[
+    "search_mist_operations",
+    "get_mist_operation_schema",
+    "invoke_mist_read",
+    "invoke_mist_privileged_read",
+];
 
 /// Default change-set limits for this consumer.
 ///
@@ -453,6 +464,7 @@ impl MistHandler {
             coordinator,
             evidence,
             lab_mode,
+            compact_tools: None,
             tool_router: Self::mist_tool_router(),
         })
     }
@@ -512,6 +524,7 @@ impl MistHandler {
             )?,
             evidence: None,
             lab_mode,
+            compact_tools: None,
             tool_router: Self::mist_tool_router(),
         })
     }
@@ -545,8 +558,17 @@ impl MistHandler {
             )?,
             evidence: Some(evidence),
             lab_mode: false,
+            compact_tools: None,
             tool_router: Self::mist_tool_router(),
         })
+    }
+
+    /// List only [`COMPACT_TOOLS`] under `ToolMode::Compact`. Listing only.
+    #[must_use]
+    pub fn with_tool_mode(mut self, mode: mecmcp_runtime::cli::ToolMode) -> Self {
+        self.compact_tools =
+            (mode == mecmcp_runtime::cli::ToolMode::Compact).then_some(COMPACT_TOOLS);
+        self
     }
 
     /// Whether `target` falls outside the configured org allowlist.
@@ -3692,7 +3714,8 @@ impl ServerHandler for MistHandler {
         let caller = mecmcp_server::caller_from_extensions::<rustmistmcp_core::MistGrant>(
             &context.extensions,
         );
-        let tools = self.tool_router.list_all();
+        let tools =
+            mecmcp_server::filter_tools_for_mode(self.tool_router.list_all(), self.compact_tools);
         let visible = if caller.is_some() {
             filter_tools_for_scope(tools, caller, RESTRICTED_TOOLS)
         } else {
@@ -4455,6 +4478,41 @@ mod tests {
         for restricted in RESTRICTED_TOOLS {
             assert!(!names.contains(restricted), "{restricted}");
         }
+    }
+
+    /// Compact mode lists exactly the registered `COMPACT_TOOLS`; full lists
+    /// the whole router. Mode is applied before scope, as in `list_tools`.
+    #[test]
+    fn tool_mode_compact_lists_only_registered_compact_tools() {
+        let handler = MistHandler::blocked(
+            "https://api.mist.com/",
+            vec!["11111111-1111-1111-1111-111111111111".to_owned()],
+            BTreeMap::new(),
+        )
+        .expect("handler");
+        let all = handler.tool_router.list_all();
+        let names_in = |handler: &MistHandler| {
+            let mut names = mecmcp_server::filter_tools_for_mode(
+                handler.tool_router.list_all(),
+                handler.compact_tools,
+            )
+            .iter()
+            .map(|tool| tool.name.to_string())
+            .collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+        assert_eq!(names_in(&handler).len(), all.len());
+
+        let compact = handler.with_tool_mode(mecmcp_runtime::cli::ToolMode::Compact);
+        let mut expected = all
+            .iter()
+            .map(|tool| tool.name.to_string())
+            .filter(|name| COMPACT_TOOLS.contains(&name.as_str()))
+            .collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(names_in(&compact), expected);
+        assert_eq!(expected.len(), COMPACT_TOOLS.len());
     }
 
     /// `search_mist_operations` is pure catalog introspection: describing an
