@@ -10,6 +10,23 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-09
+
+### Security
+
+- The container image's `distroless/cc-debian13` runtime base moves to
+  `cc66d22`, which carries zlib `1.3.1-1+deb13u1` for CVE-2026-76844 and
+  CVE-2026-85091. The 0.5.0 image's base is affected (#204, #209).
+- `rmcp` 3.9.0 for RUSTSEC-2026-0462 (#208). The advisory is in rmcp's
+  Streamable HTTP client, which this server does not use.
+
+### Dependencies
+
+- `rustix` 1.1.5 -> 1.1.6 (#205).
+- The tarball-signing and registry-publish workflows move to mecmcp v0.32.0,
+  and the package-conformance action to a later mecmcp commit with the same
+  action content (#206, #207).
+
 ## [0.5.0] - 2026-10-29
 
 ### Added
