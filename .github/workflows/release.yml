@@ -82,8 +82,9 @@ jobs:
     permissions: {}
     outputs:
       dockerhub-push: ${{ steps.dockerhub.outputs.push }}
-      labels: ${{ steps.meta.outputs.labels }}
-      metadata: ${{ steps.meta.outputs.json }}
+    # No image names or labels here: GitHub drops a job output containing any
+    # secret's value, and the Docker Hub username `mechub` is a substring of
+    # the mechubsec image path, so image-build and image each run metadata.
     steps:
       # Absent secrets skip Docker Hub and still push GHCR. A failed Docker
       # Hub login would fail the job, because both registries are pushed by
@@ -101,14 +102,6 @@ jobs:
           else
             echo "push=true" >> "$GITHUB_OUTPUT"
           fi
-      # Computed once so every platform carries identical labels.
-      - id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
-        with:
-          images: |
-            ghcr.io/${{ github.repository }}
-            ${{ steps.dockerhub.outputs.push == 'true' && 'docker.io/mechub/rustmistmcp' || '' }}
-          tags: type=semver,pattern={{version}}
 
   image-build:
     name: image-build (${{ matrix.platform }})
@@ -130,6 +123,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      # Labels only; keep `tags` identical to the image job's copy.
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: type=semver,pattern={{version}}
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
         with:
@@ -148,7 +147,7 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          labels: ${{ needs.image-plan.outputs.labels }}
+          labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,"name=ghcr.io/${{ github.repository }}${{ needs.image-plan.outputs.dockerhub-push == 'true' && ',docker.io/mechub/rustmistmcp' || '' }}",push-by-digest=true,name-canonical=true,push=true
           build-args: |
             VERSION=${{ github.ref_name }}
@@ -182,6 +181,13 @@ jobs:
           path: ${{ runner.temp }}/digests
           pattern: digests-*
           merge-multiple: true
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+            ${{ needs.image-plan.outputs.dockerhub-push == 'true' && 'docker.io/mechub/rustmistmcp' || '' }}
+          tags: type=semver,pattern={{version}}
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
         with:
@@ -200,7 +206,7 @@ jobs:
         id: manifest
         shell: bash
         env:
-          METADATA: ${{ needs.image-plan.outputs.metadata }}
+          METADATA: ${{ steps.meta.outputs.json }}
           GHCR_IMAGE: ghcr.io/${{ github.repository }}
           DH_IMAGE: docker.io/mechub/rustmistmcp
           DH_PUSH: ${{ needs.image-plan.outputs.dockerhub-push }}
