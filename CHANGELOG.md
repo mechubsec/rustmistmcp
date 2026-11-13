@@ -10,6 +10,13 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
+### Changed
+
+- The release image is now multi-arch (`linux/amd64` and `linux/arm64`), each
+  platform built on a native runner and joined into one manifest list, so
+  `docker pull` works on Apple Silicon. The recorded immutable digest is the
+  manifest-list digest (mechubsec/rustjunosmcp#648).
+
 ## [0.5.1] - 2026-11-09
 
 ### Security

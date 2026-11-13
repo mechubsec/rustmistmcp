@@ -367,7 +367,8 @@ for workflow in .github/workflows/ci.yml .github/workflows/release.yml .github/w
         failures=$((failures + 1))
     fi
 done
-require_contains .github/workflows/release.yml 'platforms: linux/amd64'
+# Native arm64 runner, never QEMU (mechubsec/rustjunosmcp#648).
+require_contains .github/workflows/release.yml 'runner: ubuntu-24.04-arm'
 require_contains .github/workflows/release.yml 'provenance: mode=max'
 require_contains .github/workflows/release.yml 'sbom: true'
 require_contains .github/workflows/release.yml "tags: ['v*-rc*', 'v*.*.*']"
@@ -426,11 +427,12 @@ fi
 require_regex .github/workflows/release.yml 'actions/upload-artifact@[0-9a-f]{40}'
 require_regex .github/workflows/release.yml 'actions/attest-build-provenance@[0-9a-f]{40}'
 require_regex .github/workflows/release.yml '^permissions: \{\}$'
-# 5 = the verify, image, archive and registry-publish jobs + the shared
+# 5 = the verify, image-build, archive and registry-publish jobs + the shared
 # gitleaks caller job, which must grant contents: read itself because the
 # workflow top level is permissions: {}.
 require_count .github/workflows/release.yml 'contents: read' 5
-require_count .github/workflows/release.yml 'packages: write' 1
+# image-build (push by digest) and image (manifest list).
+require_count .github/workflows/release.yml 'packages: write' 2
 # archive (artifact signing) and registry-publish (OIDC login to mcp-publisher).
 require_count .github/workflows/release.yml 'id-token: write' 2
 require_count .github/workflows/release.yml 'attestations: write' 1
