@@ -10,12 +10,16 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-13
+
 ### Changed
 
 - The release image is now multi-arch (`linux/amd64` and `linux/arm64`), each
   platform built on a native runner and joined into one manifest list, so
   `docker pull` works on Apple Silicon. The recorded immutable digest is the
   manifest-list digest (mechubsec/rustjunosmcp#648).
+- Dependencies: jsonschema 0.61 (#215); toml 1.2 and uuid 1.29.2 (#214); the
+  builder image moves to Rust 1.99.1 (#211).
 
 ## [0.5.1] - 2026-11-09
 
