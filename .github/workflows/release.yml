@@ -72,20 +72,22 @@ jobs:
           docker run --rm --read-only --network none --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m rustmistmcp:release-verify --help
           scripts/smoke-oci.sh rustmistmcp:release-verify
 
-  image:
+  # The image is built per platform on NATIVE runners (QEMU Rust builds took
+  # most of an hour, rustunifimcp dc3b7e1) and joined into one manifest list
+  # by `image`, so no tag moves until every platform has pushed
+  # (mechubsec/rustjunosmcp#648).
+  image-plan:
     needs: verify
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
+    permissions: {}
+    outputs:
+      dockerhub-push: ${{ steps.dockerhub.outputs.push }}
+      labels: ${{ steps.meta.outputs.labels }}
+      metadata: ${{ steps.meta.outputs.json }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
       # Absent secrets skip Docker Hub and still push GHCR. A failed Docker
-      # Hub login would fail this job, because both registries are pushed
-      # by the single build-push step below.
+      # Hub login would fail the job, because both registries are pushed by
+      # the same build step.
       - name: Check Docker Hub credentials
         id: dockerhub
         env:
@@ -99,17 +101,7 @@ jobs:
           else
             echo "push=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Log in to Docker Hub
-        if: steps.dockerhub.outputs.push == 'true'
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Computed once so every platform carries identical labels.
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
         with:
@@ -117,21 +109,138 @@ jobs:
             ghcr.io/${{ github.repository }}
             ${{ steps.dockerhub.outputs.push == 'true' && 'docker.io/mechub/rustmistmcp' || '' }}
           tags: type=semver,pattern={{version}}
+
+  image-build:
+    name: image-build (${{ matrix.platform }})
+    needs: [verify, image-plan]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            slug: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            slug: linux-arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: needs.image-plan.outputs.dockerhub-push == 'true'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Pushed untagged, by digest: a failed leg leaves published tags alone.
       - id: push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
-          push: true
-          platforms: linux/amd64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ needs.image-plan.outputs.labels }}
+          outputs: type=image,"name=ghcr.io/${{ github.repository }}${{ needs.image-plan.outputs.dockerhub-push == 'true' && ',docker.io/mechub/rustmistmcp' || '' }}",push-by-digest=true,name-canonical=true,push=true
           build-args: |
             VERSION=${{ github.ref_name }}
             REVISION=${{ github.sha }}
           provenance: mode=max
           sbom: true
+          cache-from: type=gha,scope=${{ matrix.slug }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.slug }}
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: digests-${{ matrix.slug }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  image:
+    needs: [verify, image-plan, image-build]
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: needs.image-plan.outputs.dockerhub-push == 'true'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # One manifest list per registry, each from that registry's own
+      # per-platform digests; the GHCR list digest is the recorded one.
+      - name: Create manifest lists
+        id: manifest
+        shell: bash
+        env:
+          METADATA: ${{ needs.image-plan.outputs.metadata }}
+          GHCR_IMAGE: ghcr.io/${{ github.repository }}
+          DH_IMAGE: docker.io/mechub/rustmistmcp
+          DH_PUSH: ${{ needs.image-plan.outputs.dockerhub-push }}
+          EXPECTED_PLATFORMS: '2'
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/digests"
+          mapfile -t digests < <(find . -maxdepth 1 -type f -printf '%f\n')
+          if [ "${#digests[@]}" -ne "${EXPECTED_PLATFORMS}" ]; then
+            echo "::error::expected ${EXPECTED_PLATFORMS} platform digests, found ${#digests[@]}"
+            exit 1
+          fi
+          publish() {
+            local image="$1" output="$2"
+            local list_digest
+            local -a tags args=()
+            mapfile -t tags < <(jq -r --arg prefix "${image}:" '.tags[] | select(startswith($prefix))' <<<"${METADATA}")
+            if [ "${#tags[@]}" -eq 0 ]; then
+              echo "::error::docker metadata produced no tags for ${image}"
+              exit 1
+            fi
+            for tag in "${tags[@]}"; do args+=(-t "${tag}"); done
+            for platform_digest in "${digests[@]}"; do args+=("${image}@sha256:${platform_digest}"); done
+            docker buildx imagetools create "${args[@]}"
+            list_digest="$(docker buildx imagetools inspect "${tags[0]}" --format '{{json .Manifest}}' | jq -r .digest)"
+            if [[ "${list_digest}" != sha256:* ]]; then
+              echo "::error::could not read the manifest-list digest of ${tags[0]} (got '${list_digest}')"
+              exit 1
+            fi
+            echo "${output}=${list_digest}" >> "$GITHUB_OUTPUT"
+          }
+          publish "${GHCR_IMAGE}" ghcr-digest
+          if [ "${DH_PUSH}" = "true" ]; then
+            publish "${DH_IMAGE}" dockerhub-digest
+          fi
       - name: Record immutable image digest
-        run: printf '%s@%s\n' 'ghcr.io/${{ github.repository }}' '${{ steps.push.outputs.digest }}' | tee image-digest.txt
+        env:
+          GHCR_IMAGE: ghcr.io/${{ github.repository }}
+          DIGEST: ${{ steps.manifest.outputs.ghcr-digest }}
+        run: printf '%s@%s\n' "${GHCR_IMAGE}" "${DIGEST}" | tee image-digest.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: immutable-image-digest
