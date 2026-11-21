@@ -1,3 +1,7 @@
+# Source of libgcc-s1 only; the runtime is base-nossl, which lacks it. Not the
+# runtime itself, so keep it ahead of the builder and out of the last FROM.
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:cb87acc574abe719b6e5c547384defa2f7b1f24af9605d3f618cf852495d8be2 AS libgcc
+
 # The builder digest is an OCI index supporting the release architectures.
 FROM rust:1.100.0-slim-bookworm@sha256:7c7d4eb4d05b7781187a327809466cfddf29753f6defdc3d19a0e291951b7a37 AS builder
 WORKDIR /workspace
@@ -6,8 +10,21 @@ COPY crates ./crates
 COPY docs/mist-api/catalog.json ./docs/mist-api/catalog.json
 RUN cargo build --release --locked --bin rustmistmcp
 
-# This distroless Debian 13 image supplies the required CA trust store.
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:cb87acc574abe719b6e5c547384defa2f7b1f24af9605d3f618cf852495d8be2
+# libgcc_s.so.1 is the one library the binary needs beyond glibc, and
+# base-nossl does not ship it. Stage it with its dpkg records (status.d) so
+# Trivy and the SBOM still see libgcc-s1 and gcc-14-base. The multiarch
+# directory comes from the builder's own triplet (x86_64 or aarch64).
+COPY --from=libgcc / /cc/
+RUN triplet="$(gcc -dumpmachine | sed 's/-pc-/-/')" \
+    && install -d "/stage-libgcc/usr/lib/${triplet}" /stage-libgcc/var/lib/dpkg/status.d \
+    && cp -a "/cc/usr/lib/${triplet}/libgcc_s.so.1" "/stage-libgcc/usr/lib/${triplet}/" \
+    && cp -a /cc/var/lib/dpkg/status.d/libgcc-s1 /cc/var/lib/dpkg/status.d/libgcc-s1.md5sums \
+        /cc/var/lib/dpkg/status.d/gcc-14-base /cc/var/lib/dpkg/status.d/gcc-14-base.md5sums \
+        /stage-libgcc/var/lib/dpkg/status.d/
+
+# Distroless base-nossl supplies the CA trust store without libssl3t64/libcrypto
+# (the binary is rustls-only; libssl3t64 carries unfixed CVE-2026-124709).
+FROM gcr.io/distroless/base-nossl-debian13:nonroot@sha256:89815d620ac01d8de13cdaf04d19ed874447ca2296d4985b14b818f6e5e47854
 ARG VERSION=0.0.0-pre-release
 ARG REVISION=unknown
 ARG CREATED=unknown
@@ -20,6 +37,7 @@ LABEL org.opencontainers.image.title="rustmistmcp" \
       org.opencontainers.image.licenses="MIT"
 # Official MCP Registry ownership check: must equal server.json "name".
 LABEL io.modelcontextprotocol.server.name="io.github.mechubsec/rustmistmcp"
+COPY --from=builder /stage-libgcc/ /
 COPY --from=builder /workspace/target/release/rustmistmcp /usr/local/bin/rustmistmcp
 USER 65532:65532
 EXPOSE 30030

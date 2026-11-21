@@ -10,6 +10,12 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
+### Security
+
+- The container image runs on `distroless/base-nossl-debian13`, with `libgcc_s.so.1`
+  staged from the digest-pinned `cc-debian13`, so `libssl3t64` and its unfixed
+  CVE-2026-124709 are no longer in the image. The binary is rustls-only.
+
 ## [0.5.2] - 2026-11-13
 
 ### Changed
