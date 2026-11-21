@@ -40,6 +40,17 @@ docker run --rm --network none \
     rust:1.100.0-slim-bookworm@sha256:7c7d4eb4d05b7781187a327809466cfddf29753f6defdc3d19a0e291951b7a37 \
     -R 65532:65532 /fixture/runtime /fixture/state
 
+# Regression guard: runtime base must stay libssl-free and keep libgcc_s.
+fs_listing=$(docker create --name "$name-fs" "$image" /x >/dev/null && docker export "$name-fs" | tar -t; docker rm -f "$name-fs" >/dev/null 2>&1)
+if grep -Eq '(^|/)lib(ssl|crypto)\.so' <<<"$fs_listing"; then
+    printf '%s\n' 'image contains libssl/libcrypto; runtime must be distroless base-nossl' >&2
+    exit 1
+fi
+grep -Eq '(^|/)libgcc_s\.so\.1$' <<<"$fs_listing" || {
+    printf '%s\n' 'image is missing libgcc_s.so.1' >&2
+    exit 1
+}
+
 docker run -d --name "$name" \
     --user 65532:65532 \
     --read-only \

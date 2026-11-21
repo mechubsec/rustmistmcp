@@ -132,7 +132,8 @@ tmpfiles=packaging/systemd/rustmistmcp.tmpfiles
 # (Dockerfile, release.yml, smoke-oci.sh x2, rust-toolchain.toml), which the
 # consistency check right after this enforces.
 require_regex "$dockerfile" '^FROM rust:[0-9]+\.[0-9]+\.[0-9]+-slim-bookworm@sha256:[0-9a-f]{64} AS builder$'
-require_regex "$dockerfile" '^FROM gcr\.io/distroless/cc-debian13:nonroot@sha256:[0-9a-f]{64}$'
+require_regex "$dockerfile" '^FROM gcr\.io/distroless/cc-debian13:nonroot@sha256:[0-9a-f]{64} AS libgcc$'
+require_regex "$dockerfile" '^FROM gcr\.io/distroless/base-nossl-debian13:nonroot@sha256:[0-9a-f]{64}$'
 require_absent "$dockerfile" '^# syntax='
 require_contains "$dockerfile" 'USER 65532:65532'
 require_contains "$dockerfile" 'EXPOSE 30030'
