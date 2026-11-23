@@ -20,6 +20,9 @@ visible rather than looking like those versions never existed.
   image ships `deb13u4`, which has 14 fixed CVEs (CVE-2026-18374, -19499,
   -19542, -5435, -6238, -6368, -6791, -77117, -80489, -8674, -86805, -89092,
   -95818, -97399) on both platforms.
+- `url` 2.5.8 to 2.5.9 (RUSTSEC-2026-0592, stack overflow in `Url::origin()` on
+  nested `blob:` URLs) and `cookie` 0.18.2 to 0.18.3 (RUSTSEC-2026-0594, private
+  cookie nonces can repeat in processes that fork).
 
 ### Changed
 

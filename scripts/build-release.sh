@@ -69,7 +69,7 @@ if [[ ${RUSTMISTMCP_SKIP_BUILD:-0} == 1 ]]; then
     [[ -x $prebuilt ]] || {
         # The image is multi-arch; name the platform that matches $target.
         case $target in
-            aarch64-*) image_platform=linux/arm64 ;;
+            aarch64-unknown-linux-gnu) image_platform=linux/arm64 ;;
             *) image_platform=linux/amd64 ;;
         esac
         printf '%s\n' \
