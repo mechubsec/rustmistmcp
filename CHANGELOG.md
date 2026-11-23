@@ -26,9 +26,9 @@ visible rather than looking like those versions never existed.
 - Each release image leg now runs `scripts/smoke-oci.sh` against the digest it
   pushed, on its own native runner. Until now only an amd64 build was ever
   started, so an arm64 image that could not boot would still have been tagged.
-- The LXC guide and the skip-build hint extract the binary with
-  `docker create --platform linux/amd64`, so an arm64 workstation gets the
-  x86-64 binary the package expects instead of a refusal.
+- The LXC guide extracts the binary with `docker create --platform linux/amd64`,
+  and the skip-build hint names the platform matching the packaging target, so
+  an arm64 workstation gets the binary the package expects instead of a refusal.
 
 ## [0.5.2] - 2026-11-13
 

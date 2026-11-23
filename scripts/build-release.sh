@@ -67,10 +67,15 @@ fi
 if [[ ${RUSTMISTMCP_SKIP_BUILD:-0} == 1 ]]; then
     prebuilt="$cargo_target_dir/$target/release/rustmistmcp"
     [[ -x $prebuilt ]] || {
+        # The image is multi-arch; name the platform that matches $target.
+        case $target in
+            aarch64-*) image_platform=linux/arm64 ;;
+            *) image_platform=linux/amd64 ;;
+        esac
         printf '%s\n' \
             "RUSTMISTMCP_SKIP_BUILD=1 but $prebuilt is missing or not executable." \
             'Place the CI-built binary there first, e.g. from the release image:' \
-            '  docker create --platform linux/amd64 --name mx ghcr.io/mechubsec/rustmistmcp:<version>' \
+            "  docker create --platform $image_platform --name mx ghcr.io/mechubsec/rustmistmcp:<version>" \
             "  docker cp mx:/usr/local/bin/rustmistmcp $prebuilt" \
             '  docker rm mx' >&2
         exit 1
