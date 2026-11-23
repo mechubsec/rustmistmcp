@@ -1,6 +1,6 @@
 # Source of libgcc-s1 only; the runtime is base-nossl, which lacks it. Not the
 # runtime itself, so keep it ahead of the builder and out of the last FROM.
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:cb87acc574abe719b6e5c547384defa2f7b1f24af9605d3f618cf852495d8be2 AS libgcc
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:532c7a94f9e96ba9db75eb9388f4227751131c7cb0a411d1a8521af4096135de AS libgcc
 
 # The builder digest is an OCI index supporting the release architectures.
 FROM rust:1.100.0-slim-bookworm@sha256:7c7d4eb4d05b7781187a327809466cfddf29753f6defdc3d19a0e291951b7a37 AS builder
@@ -24,7 +24,7 @@ RUN triplet="$(gcc -dumpmachine | sed 's/-pc-/-/')" \
 
 # Distroless base-nossl supplies the CA trust store without libssl3t64/libcrypto
 # (the binary is rustls-only; libssl3t64 carries unfixed CVE-2026-124709).
-FROM gcr.io/distroless/base-nossl-debian13:nonroot@sha256:89815d620ac01d8de13cdaf04d19ed874447ca2296d4985b14b818f6e5e47854
+FROM gcr.io/distroless/base-nossl-debian13:nonroot@sha256:4006ac92504be607b70de01d1f64f38288c69fcd8faa820f6d3aed266ea32ac5
 ARG VERSION=0.0.0-pre-release
 ARG REVISION=unknown
 ARG CREATED=unknown
