@@ -10,6 +10,8 @@ visible rather than looking like those versions never existed.
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-11-23
+
 ### Security
 
 - The container image runs on `distroless/base-nossl-debian13`, with `libgcc_s.so.1`
