@@ -57,7 +57,7 @@ is honored:
 cd /path/to/rustmistmcp
 target_path=${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release
 mkdir -p "$target_path"
-docker create --name mx ghcr.io/mechubsec/rustmistmcp@sha256:<verified-64-hex-digest>
+docker create --platform linux/amd64 --name mx ghcr.io/mechubsec/rustmistmcp@sha256:<verified-64-hex-digest>
 docker cp mx:/usr/local/bin/rustmistmcp "$target_path/rustmistmcp"
 docker rm mx
 chmod 0755 "$target_path/rustmistmcp"

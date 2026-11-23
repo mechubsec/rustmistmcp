@@ -15,6 +15,20 @@ visible rather than looking like those versions never existed.
 - The container image runs on `distroless/base-nossl-debian13`, with `libgcc_s.so.1`
   staged from the digest-pinned `cc-debian13`, so `libssl3t64` and its unfixed
   CVE-2026-124709 are no longer in the image. The binary is rustls-only.
+- Both distroless pins (`base-nossl-debian13` runtime, `cc-debian13` source of
+  `libgcc_s.so.1`) move to digests carrying glibc `2.41-12+deb13u5`. The 0.5.2
+  image ships `deb13u4`, which has 14 fixed CVEs (CVE-2026-18374, -19499,
+  -19542, -5435, -6238, -6368, -6791, -77117, -80489, -8674, -86805, -89092,
+  -95818, -97399) on both platforms.
+
+### Changed
+
+- Each release image leg now runs `scripts/smoke-oci.sh` against the digest it
+  pushed, on its own native runner. Until now only an amd64 build was ever
+  started, so an arm64 image that could not boot would still have been tagged.
+- The LXC guide and the skip-build hint extract the binary with
+  `docker create --platform linux/amd64`, so an arm64 workstation gets the
+  x86-64 binary the package expects instead of a refusal.
 
 ## [0.5.2] - 2026-11-13
 

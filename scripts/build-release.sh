@@ -70,7 +70,7 @@ if [[ ${RUSTMISTMCP_SKIP_BUILD:-0} == 1 ]]; then
         printf '%s\n' \
             "RUSTMISTMCP_SKIP_BUILD=1 but $prebuilt is missing or not executable." \
             'Place the CI-built binary there first, e.g. from the release image:' \
-            '  docker create --name mx ghcr.io/mechubsec/rustmistmcp:<version>' \
+            '  docker create --platform linux/amd64 --name mx ghcr.io/mechubsec/rustmistmcp:<version>' \
             "  docker cp mx:/usr/local/bin/rustmistmcp $prebuilt" \
             '  docker rm mx' >&2
         exit 1

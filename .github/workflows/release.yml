@@ -156,6 +156,13 @@ jobs:
           sbom: true
           cache-from: type=gha,scope=${{ matrix.slug }}
           cache-to: type=gha,mode=max,scope=${{ matrix.slug }}
+      # Start the pushed image on this leg's own native runner. verify only
+      # smokes amd64, so this is the one place an arm64 image that cannot start
+      # fails the release, and no tag moves until every leg passes.
+      - name: Smoke-test pushed image
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: scripts/smoke-oci.sh "ghcr.io/${GITHUB_REPOSITORY}@${DIGEST}"
       - name: Export digest
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
