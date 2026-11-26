@@ -1,6 +1,6 @@
 # Source of libgcc-s1 only; the runtime is base-nossl, which lacks it. Not the
 # runtime itself, so keep it ahead of the builder and out of the last FROM.
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:532c7a94f9e96ba9db75eb9388f4227751131c7cb0a411d1a8521af4096135de AS libgcc
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:29ee70762214fe8190cea04ef1c0a84a8365879e047ce8f911ae5a5ab2355fa2 AS libgcc
 
 # The builder digest is an OCI index supporting the release architectures.
 FROM rust:1.100.0-slim-bookworm@sha256:7c7d4eb4d05b7781187a327809466cfddf29753f6defdc3d19a0e291951b7a37 AS builder
